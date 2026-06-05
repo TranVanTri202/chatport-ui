@@ -11,7 +11,7 @@ export interface UseChatResult {
   readonly messages: ReadonlyArray<Message>;
   selectConversation: (id: string) => void;
   sendText: (text: string) => void;
-  sendImage: (file: File) => void;
+  sendImage: (file: File, caption?: string) => void;
   sendFile: (file: File) => void;
 }
 
@@ -209,7 +209,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     }
   }, [botExternalId, active]);
 
-  const sendImage = useCallback(async (file: File) => {
+  const sendImage = useCallback(async (file: File, caption?: string) => {
     if (!botExternalId || !active) return;
 
     try {
@@ -218,6 +218,9 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
       formData.append("threadId", active.phone || "");
       formData.append("threadType", active.type === "group" ? "group" : "user");
       formData.append("file", file);
+      if (caption?.trim()) {
+        formData.append("caption", caption.trim());
+      }
 
       await api.post("/messages/send/image", formData);
     } catch (error) {

@@ -129,12 +129,14 @@ function ConvoRow({ convo, active, onClick }: { readonly convo: Conversation; re
 function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile }: {
   readonly convo: Conversation | undefined; readonly messages: ReadonlyArray<Message>;
   readonly expired: boolean; readonly vi: boolean;
-  readonly onSendText: (t: string) => void; readonly onSendImage: (f: File) => void; readonly onSendFile: (f: File) => void;
+  readonly onSendText: (t: string) => void; readonly onSendImage: (f: File, caption?: string) => void; readonly onSendFile: (f: File) => void;
 }): JSX.Element {
   const [draft, setDraft] = useState("");
   const [auto, setAuto] = useState(Boolean(convo?.auto));
   const [search, setSearch] = useState("");
   const [searchOn, setSearchOn] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -144,6 +146,15 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
       ? messages.filter((m) => (m.text ?? m.fileName ?? "").toLowerCase().includes(search.trim().toLowerCase()))
       : messages;
   }, [searchOn, search, messages]);
+
+  useEffect(() => {
+    // Clear preview when conversation changes
+    setSelectedImage(null);
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      setImagePreviewUrl(null);
+    }
+  }, [convo?.id]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -159,7 +170,22 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
   }, [shown]);
 
   if (!convo) return <div className="grid place-items-center bg-chat text-muted">—</div>;
-  const send = (): void => { onSendText(draft); setDraft(""); };
+  
+  const send = (): void => {
+    if (selectedImage) {
+      onSendImage(selectedImage, draft);
+      setSelectedImage(null);
+      if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+      setImagePreviewUrl(null);
+      setDraft("");
+    } else {
+      const trimmed = draft.trim();
+      if (trimmed) {
+        onSendText(trimmed);
+        setDraft("");
+      }
+    }
+  };
 
   return (
     <div className="relative flex min-h-0 flex-col bg-chat">
@@ -205,17 +231,42 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
           <Icon name="alert" size={15} className="text-danger" /> {vi ? "Không thể gửi tin khi mất phiên đăng nhập" : "Can't send — session expired"}
         </div>
       ) : (
-        <div className="border-t border-border bg-surface-0 p-[12px_18px_16px]">
-          {auto ? <div className="mb-2.5 flex items-center gap-2 text-[11.5px] text-accent"><span className="h-1.5 w-1.5 rounded-full bg-accent" /> {vi ? "AI đang tự trả lời · nhập để tiếp quản" : "AI is replying · type to take over"}</div> : null}
-          <div className="flex items-center gap-2">
-            <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onSendImage(f); e.target.value = ""; }} />
-            <input ref={fileRef} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onSendFile(f); e.target.value = ""; }} />
-            <button onClick={() => imgRef.current?.click()} className="grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border text-muted hover:text-text"><Icon name="image" size={18} /></button>
-            <button onClick={() => fileRef.current?.click()} className="grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border text-muted hover:text-text"><Icon name="paperclip" size={18} /></button>
-            <div className="flex flex-1 items-center rounded-xl border border-border bg-surface-2 p-[4px_6px_4px_14px]">
-              <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={vi ? "Nhập tin nhắn…" : "Type a message…"} className="flex-1 bg-transparent py-2 text-sm text-text outline-none" />
+        <div className="border-t border-border bg-surface-0">
+          {imagePreviewUrl ? (
+            <div className="flex items-center gap-3 border-b border-border bg-surface-2 p-[10px_18px]">
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border">
+                <img src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
+                <button
+                  onClick={() => {
+                    setSelectedImage(null);
+                    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+                    setImagePreviewUrl(null);
+                  }}
+                  className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded-full bg-danger/80 text-white hover:bg-danger shadow-md transition-colors"
+                >
+                  <Icon name="x" size={9} />
+                </button>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-semibold">{selectedImage?.name}</div>
+                <div className="text-[10px] text-muted">
+                  {selectedImage ? `${(selectedImage.size / 1024).toFixed(1)} KB` : ""}
+                </div>
+              </div>
             </div>
-            <Button icon="send" onClick={send} className="rounded-xl px-4 py-2.5">{vi ? "Gửi" : "Send"}</Button>
+          ) : null}
+          <div className="p-[12px_18px_16px]">
+            {auto ? <div className="mb-2.5 flex items-center gap-2 text-[11.5px] text-accent"><span className="h-1.5 w-1.5 rounded-full bg-accent" /> {vi ? "AI đang tự trả lời · nhập để tiếp quản" : "AI is replying · type to take over"}</div> : null}
+            <div className="flex items-center gap-2">
+              <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setSelectedImage(f); setImagePreviewUrl(URL.createObjectURL(f)); } e.target.value = ""; }} />
+              <input ref={fileRef} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onSendFile(f); e.target.value = ""; }} />
+              <button onClick={() => imgRef.current?.click()} className="grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border text-muted hover:text-text"><Icon name="image" size={18} /></button>
+              <button onClick={() => fileRef.current?.click()} className="grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border text-muted hover:text-text"><Icon name="paperclip" size={18} /></button>
+              <div className="flex flex-1 items-center rounded-xl border border-border bg-surface-2 p-[4px_6px_4px_14px]">
+                <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={vi ? "Nhập tin nhắn…" : "Type a message…"} className="flex-1 bg-transparent py-2 text-sm text-text outline-none" />
+              </div>
+              <Button icon="send" onClick={send} className="rounded-xl px-4 py-2.5">{vi ? "Gửi" : "Send"}</Button>
+            </div>
           </div>
         </div>
       )}
