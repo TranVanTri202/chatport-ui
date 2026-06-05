@@ -32,7 +32,7 @@ export function ChatView({ initialAccountId, initialConvoId }: ChatViewProps): J
 }
 
 function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { readonly account: Account; readonly accounts: ReadonlyArray<Account>; readonly vi: boolean; readonly onSwitch: (id: string) => void; readonly initialConvoId?: string }): JSX.Element {
-  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile } = useChat(account.convos, initialConvoId);
+  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, reactToMessage } = useChat(account.convos, initialConvoId);
   const [filter, setFilter] = useState<"all" | "direct" | "group">("all");
   const [query, setQuery] = useState("");
   const [botMenu, setBotMenu] = useState(false);
@@ -98,7 +98,7 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
         </div>
       </div>
 
-      <ChatThread key={active?.id ?? "empty"} convo={active} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={sendFile} />
+      <ChatThread key={active?.id ?? "empty"} convo={active} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={sendFile} onReactToMessage={reactToMessage} />
       {active ? <ChatInfoPanel account={account} convo={active} vi={vi} /> : <div className="border-l border-border bg-surface-0" />}
     </div>
   );
@@ -126,10 +126,11 @@ function ConvoRow({ convo, active, onClick }: { readonly convo: Conversation; re
   );
 }
 
-function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile }: {
+function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage }: {
   readonly convo: Conversation | undefined; readonly messages: ReadonlyArray<Message>;
   readonly expired: boolean; readonly vi: boolean;
   readonly onSendText: (t: string) => void; readonly onSendImage: (f: File, caption?: string) => void; readonly onSendFile: (f: File) => void;
+  readonly onReactToMessage: (messageExternalId: string, reactIcon: string) => Promise<void>;
 }): JSX.Element {
   const [draft, setDraft] = useState("");
   const [auto, setAuto] = useState(Boolean(convo?.auto));
@@ -223,7 +224,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
 
       <div ref={scrollRef} className="flex flex-1 flex-col gap-1 overflow-y-auto p-[22px_24px] no-scrollbar">
         <div className="mb-3.5 text-center"><span className="rounded-full bg-surface-2 px-3 py-1 text-[11px] text-muted">{vi ? "Hôm nay" : "Today"}</span></div>
-        {shown.map((m, i) => <Bubble key={m.id} message={m} prev={shown[i - 1]} vi={vi} highlight={searchOn ? search.trim() : ""} />)}
+        {shown.map((m, i) => <Bubble key={m.id} message={m} prev={shown[i - 1]} vi={vi} highlight={searchOn ? search.trim() : ""} onReact={onReactToMessage} />)}
       </div>
 
       {expired ? (
@@ -274,35 +275,74 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
   );
 }
 
-function Bubble({ message, prev, vi, highlight }: { readonly message: Message; readonly prev: Message | undefined; readonly vi: boolean; readonly highlight: string }): JSX.Element {
+function Bubble({ message, prev, vi, highlight, onReact }: { readonly message: Message; readonly prev: Message | undefined; readonly vi: boolean; readonly highlight: string; readonly onReact: (messageExternalId: string, reactIcon: string) => Promise<void> }): JSX.Element {
   const mine = message.from === "me" || message.from === "ai";
   const isAI = message.from === "ai";
   const showWho = message.who && (!prev || prev.who !== message.who);
   const cls = isAI ? "bubble-ai" : mine ? "bubble-me" : "bubble-them";
   const time = message.time === "now" ? (vi ? "vừa xong" : "now") : message.time;
+  const [showPicker, setShowPicker] = useState(false);
 
   return (
-    <div className={`mt-2 flex flex-col ${mine ? "items-end" : "items-start"} animate-message`}>
+    <div className={`mt-2 flex flex-col ${mine ? "items-end" : "items-start"} animate-message group/bubble relative`}>
       {showWho ? <span className="m-[2px_4px_4px] text-[11px] text-muted">{message.who}</span> : null}
       {isAI ? <div className="m-[0_4px_5px] flex items-center gap-1.5 text-[10.5px] font-semibold text-accent"><Icon name="bot" size={12} /> {vi ? "AI tự gửi" : "Sent by AI"}</div> : null}
-      <div className={`${cls} max-w-[76%] rounded-[17px] p-[10px_14px] text-[13.5px] leading-relaxed`} style={message.kind === "image" || message.kind === "video" ? { padding: 4 } : undefined}>
-        {message.kind === "image" ? (
-          <img src={message.img} alt="" className="block w-[248px] max-w-full rounded-xl object-cover" />
-        ) : message.kind === "video" ? (
-          <video src={message.videoUrl} controls className="block w-[320px] max-w-full rounded-xl object-cover" />
-        ) : message.kind === "file" ? (
-          <div className="flex items-center gap-3">
-            <span className="grid h-[38px] w-[38px] place-items-center rounded-[9px] bg-black/15"><Icon name="doc" size={19} /></span>
-            <div className="min-w-0">
-              <div className="max-w-[180px] truncate text-[13px] font-semibold">{message.fileName}</div>
-              <div className="text-[11px] opacity-70">{message.fileSize}</div>
-            </div>
-            <Icon name="download" size={16} className="opacity-70" />
-          </div>
-        ) : (
-          <Highlighted text={message.text ?? ""} q={highlight} />
+      
+      <div className="flex items-center gap-2 max-w-[76%] relative">
+        {mine && (
+          <ReactionTrigger
+            message={message}
+            onReact={onReact}
+            showPicker={showPicker}
+            setShowPicker={setShowPicker}
+            mine={mine}
+          />
         )}
-        <div className="mt-1 text-right text-[10px] opacity-70">{time}</div>
+        
+        <div className={`${cls} flex-1 rounded-[17px] p-[10px_14px] text-[13.5px] leading-relaxed relative`} style={message.kind === "image" || message.kind === "video" ? { padding: 4 } : undefined}>
+          {message.kind === "image" ? (
+            <img src={message.img} alt="" className="block w-[248px] max-w-full rounded-xl object-cover" />
+          ) : message.kind === "video" ? (
+            <video src={message.videoUrl} controls className="block w-[320px] max-w-full rounded-xl object-cover" />
+          ) : message.kind === "file" ? (
+            <div className="flex items-center gap-3">
+              <span className="grid h-[38px] w-[38px] place-items-center rounded-[9px] bg-black/15"><Icon name="doc" size={19} /></span>
+              <div className="min-w-0">
+                <div className="max-w-[180px] truncate text-[13px] font-semibold">{message.fileName}</div>
+                <div className="text-[11px] opacity-70">{message.fileSize}</div>
+              </div>
+              <Icon name="download" size={16} className="opacity-70" />
+            </div>
+          ) : (
+            <Highlighted text={message.text ?? ""} q={highlight} />
+          )}
+          <div className="mt-1 text-right text-[10px] opacity-70">{time}</div>
+
+          {message.reactions && message.reactions.length > 0 && (
+            <div className={`absolute -bottom-2.5 ${mine ? 'right-4' : 'left-4'} flex items-center gap-1 bg-surface-2 border border-border rounded-full px-1.5 py-0.5 shadow-md text-xs select-none backdrop-blur-sm z-10 hover:bg-surface-3 transition-colors cursor-pointer`}>
+              {Array.from(new Set(message.reactions.map(r => r.reaction))).map(emoji => {
+                const count = message.reactions!.filter(r => r.reaction === emoji).length;
+                const names = message.reactions!.filter(r => r.reaction === emoji).map(r => r.userName).join(", ");
+                return (
+                  <span key={emoji} className="flex items-center gap-0.5" title={names}>
+                    <span>{emoji}</span>
+                    {count > 1 && <span className="text-[9px] text-muted font-bold">{count}</span>}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {!mine && (
+          <ReactionTrigger
+            message={message}
+            onReact={onReact}
+            showPicker={showPicker}
+            setShowPicker={setShowPicker}
+            mine={mine}
+          />
+        )}
       </div>
     </div>
   );
@@ -319,5 +359,64 @@ function Highlighted({ text, q }: { readonly text: string; readonly q: string })
       <mark className="rounded-sm bg-accent px-0.5 text-[#0a1f16]">{text.slice(idx, idx + q.length)}</mark>
       {text.slice(idx + q.length)}
     </span>
+  );
+}
+
+const REACTION_LIST = [
+  { icon: "/-heart", emoji: "❤️" },
+  { icon: "/-strong", emoji: "👍" },
+  { icon: ":>", emoji: "😂" },
+  { icon: ":o", emoji: "😮" },
+  { icon: ":-((", emoji: "😢" },
+  { icon: ":-h", emoji: "😡" },
+];
+
+function ReactionTrigger({
+  message,
+  onReact,
+  showPicker,
+  setShowPicker,
+  mine,
+}: {
+  readonly message: Message;
+  readonly onReact: (messageExternalId: string, reactIcon: string) => Promise<void>;
+  readonly showPicker: boolean;
+  readonly setShowPicker: (val: boolean) => void;
+  readonly mine: boolean;
+}): JSX.Element {
+  return (
+    <div className="relative shrink-0">
+      <button
+        onClick={() => setShowPicker(!showPicker)}
+        className="opacity-0 group-hover/bubble:opacity-100 transition-opacity duration-200 grid h-6 w-6 place-items-center rounded-full border border-border bg-surface-2 hover:bg-surface-3 text-muted hover:text-text cursor-pointer shadow-sm"
+      >
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+          <line x1="9" y1="9" x2="9.01" y2="9" />
+          <line x1="15" y1="9" x2="15.01" y2="9" />
+        </svg>
+      </button>
+
+      {showPicker && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setShowPicker(false)} />
+          <div className={`absolute bottom-full ${mine ? 'right-0' : 'left-0'} mb-2 z-50 flex items-center gap-1.5 bg-surface-3 border border-border shadow-2xl rounded-full p-1.5 animate-pop-in`}>
+            {REACTION_LIST.map(({ icon, emoji }) => (
+              <button
+                key={icon}
+                onClick={() => {
+                  void onReact(message.messageExternalId || "", icon);
+                  setShowPicker(false);
+                }}
+                className="text-[17px] hover:scale-130 transition-transform duration-150 p-1 cursor-pointer select-none"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

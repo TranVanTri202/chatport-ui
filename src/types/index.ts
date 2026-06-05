@@ -61,8 +61,15 @@ export interface Conversation {
 export type MessageSender = "them" | "me" | "ai";
 export type MessageKind = "text" | "image" | "file" | "video";
 
+export interface MessageReaction {
+  readonly userId: string;
+  readonly userName: string;
+  readonly reaction: string;
+}
+
 export interface Message {
   readonly id: string;
+  readonly messageExternalId?: string;
   readonly from: MessageSender;
   readonly kind: MessageKind;
   readonly time: string;
@@ -73,6 +80,7 @@ export interface Message {
   readonly fileName?: string;
   readonly fileSize?: string;
   readonly videoUrl?: string;
+  readonly reactions?: ReadonlyArray<MessageReaction>;
 }
 
 export interface ReferenceDoc {

@@ -13,6 +13,7 @@ export interface UseChatResult {
   sendText: (text: string) => void;
   sendImage: (file: File, caption?: string) => void;
   sendFile: (file: File) => void;
+  reactToMessage: (messageExternalId: string, reactIcon: string) => Promise<void>;
 }
 
 export function useChat(convoKey: string, initialConvoId?: string): UseChatResult {
@@ -114,8 +115,18 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           }
         }
 
+        let reactions: any[] = [];
+        if (m.reactions) {
+          try {
+            reactions = typeof m.reactions === "string" ? JSON.parse(m.reactions) : m.reactions;
+          } catch (e) {
+            console.error("Failed to parse reactions:", e);
+          }
+        }
+
         return {
           id: String(m.id),
+          messageExternalId: m.messageExternalId,
           from: m.direction === "in" ? "them" : (m.senderExternalId === botExternalId ? "me" : "ai"),
           kind: m.type === "image" ? "image" : m.type === "video" ? "video" : m.type === "file" ? "file" : "text",
           time: formatTime(m.createdAt),
@@ -124,6 +135,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           fileName,
           fileSize,
           videoUrl,
+          reactions,
         };
       });
       setMessages(mappedMsgs.reverse());
@@ -186,6 +198,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           fileName,
           fileSize,
           videoUrl,
+          reactions: [],
         };
         setMessages((prev) => {
           if (prev.some((m) => m.id === newMsg.id)) return prev;
@@ -195,10 +208,28 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
       void fetchConversations();
     };
 
+    const handleMessageReaction = (data: any) => {
+      if (activeId && String(data.conversationId) === activeId) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.messageExternalId === data.messageExternalId) {
+              return {
+                ...m,
+                reactions: data.reactions,
+              };
+            }
+            return m;
+          })
+        );
+      }
+    };
+
     socket.on("message:new", handleNewMessage);
+    socket.on("message:reaction", handleMessageReaction);
 
     return () => {
       socket.off("message:new", handleNewMessage);
+      socket.off("message:reaction", handleMessageReaction);
     };
   }, [socket, activeId, fetchConversations]);
 
@@ -241,9 +272,25 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     console.warn("File sending not fully implemented in backend yet", file);
   }, []);
 
+  const reactToMessage = useCallback(async (messageExternalId: string, reactIcon: string) => {
+    if (!botExternalId || !active) return;
+
+    try {
+      await api.post("/messages/react", {
+        botExternalId,
+        threadId: active.phone,
+        threadType: active.type === "group" ? "group" : "user",
+        messageExternalId,
+        reactIcon,
+      });
+    } catch (error) {
+      console.error("Failed to react to message:", error);
+    }
+  }, [botExternalId, active]);
+
   const selectConversation = useCallback((id: string) => {
     setActiveId(id);
   }, []);
 
-  return { conversations, active, messages, selectConversation, sendText, sendImage, sendFile };
+  return { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, reactToMessage };
 }
