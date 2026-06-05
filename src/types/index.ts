@@ -59,7 +59,7 @@ export interface Conversation {
 }
 
 export type MessageSender = "them" | "me" | "ai";
-export type MessageKind = "text" | "image" | "file";
+export type MessageKind = "text" | "image" | "file" | "video";
 
 export interface Message {
   readonly id: string;
@@ -72,6 +72,7 @@ export interface Message {
   readonly img?: string;
   readonly fileName?: string;
   readonly fileSize?: string;
+  readonly videoUrl?: string;
 }
 
 export interface ReferenceDoc {

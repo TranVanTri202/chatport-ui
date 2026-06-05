@@ -285,9 +285,11 @@ function Bubble({ message, prev, vi, highlight }: { readonly message: Message; r
     <div className={`mt-2 flex flex-col ${mine ? "items-end" : "items-start"} animate-message`}>
       {showWho ? <span className="m-[2px_4px_4px] text-[11px] text-muted">{message.who}</span> : null}
       {isAI ? <div className="m-[0_4px_5px] flex items-center gap-1.5 text-[10.5px] font-semibold text-accent"><Icon name="bot" size={12} /> {vi ? "AI tự gửi" : "Sent by AI"}</div> : null}
-      <div className={`${cls} max-w-[76%] rounded-[17px] p-[10px_14px] text-[13.5px] leading-relaxed`} style={message.kind === "image" ? { padding: 4 } : undefined}>
+      <div className={`${cls} max-w-[76%] rounded-[17px] p-[10px_14px] text-[13.5px] leading-relaxed`} style={message.kind === "image" || message.kind === "video" ? { padding: 4 } : undefined}>
         {message.kind === "image" ? (
           <img src={message.img} alt="" className="block w-[248px] max-w-full rounded-xl object-cover" />
+        ) : message.kind === "video" ? (
+          <video src={message.videoUrl} controls className="block w-[320px] max-w-full rounded-xl object-cover" />
         ) : message.kind === "file" ? (
           <div className="flex items-center gap-3">
             <span className="grid h-[38px] w-[38px] place-items-center rounded-[9px] bg-black/15"><Icon name="doc" size={19} /></span>

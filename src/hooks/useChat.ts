@@ -100,11 +100,14 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         let img: string | undefined = undefined;
         let fileName: string | undefined = undefined;
         let fileSize: string | undefined = undefined;
+        let videoUrl: string | undefined = undefined;
 
         if (m.attachments && m.attachments.length > 0) {
           const first = m.attachments[0];
           if (m.type === "image") {
             img = first.url;
+          } else if (m.type === "video") {
+            videoUrl = first.url;
           } else if (m.type === "file") {
             fileName = first.name || "Attachment";
             fileSize = first.size || "Unknown size";
@@ -114,12 +117,13 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         return {
           id: String(m.id),
           from: m.direction === "in" ? "them" : (m.senderExternalId === botExternalId ? "me" : "ai"),
-          kind: m.type === "image" ? "image" : m.type === "file" ? "file" : "text",
+          kind: m.type === "image" ? "image" : m.type === "video" ? "video" : m.type === "file" ? "file" : "text",
           time: formatTime(m.createdAt),
           text: m.text || undefined,
           img,
           fileName,
           fileSize,
+          videoUrl,
         };
       });
       setMessages(mappedMsgs.reverse());
@@ -154,13 +158,17 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         let img: string | undefined = undefined;
         let fileName: string | undefined = undefined;
         let fileSize: string | undefined = undefined;
-        let kind: "text" | "image" | "file" = "text";
+        let videoUrl: string | undefined = undefined;
+        let kind: "text" | "image" | "file" | "video" = "text";
 
         if (data.attachments && data.attachments.length > 0) {
           const first = data.attachments[0];
           if (first.type === "image") {
             kind = "image";
             img = first.url;
+          } else if (first.type === "video") {
+            kind = "video";
+            videoUrl = first.url;
           } else if (first.type === "file") {
             kind = "file";
             fileName = first.name || "Attachment";
@@ -177,6 +185,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           img,
           fileName,
           fileSize,
+          videoUrl,
         };
         setMessages((prev) => {
           if (prev.some((m) => m.id === newMsg.id)) return prev;
