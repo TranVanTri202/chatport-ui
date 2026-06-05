@@ -1,0 +1,133 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Friend, FriendRequest } from "@/types";
+import { api } from "@/lib/api";
+
+export interface UseContactsResult {
+  readonly friends: ReadonlyArray<Friend>;
+  readonly requests: ReadonlyArray<FriendRequest>;
+  readonly grouped: ReadonlyArray<readonly [string, ReadonlyArray<Friend>]>;
+  setQuery: (q: string) => void;
+  readonly query: string;
+  accept: (req: FriendRequest) => void;
+  decline: (req: FriendRequest) => void;
+}
+
+/** Logic for the contacts screen: filtering, alphabetical grouping, accept/decline. */
+export function useContacts(accountPhone?: string): UseContactsResult {
+  const [friends, setFriends] = useState<ReadonlyArray<Friend>>([]);
+  const [requests, setRequests] = useState<ReadonlyArray<FriendRequest>>([]);
+  const [query, setQuery] = useState("");
+
+  const loadContacts = useCallback(async () => {
+    if (!accountPhone) {
+      setFriends([]);
+      setRequests([]);
+      return;
+    }
+    try {
+      const contactsRes = await api.get<any[]>(`/bots/zalo/${accountPhone}/contacts`);
+      const requestsRes = await api.get<any[]>(`/bots/zalo/${accountPhone}/contacts/requests`);
+
+      const mappedFriends: Friend[] = contactsRes.map((c) => {
+        const initials = (c.name || "ZF")
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase();
+        let hash = 0;
+        const nameStr = c.name || "";
+        for (let i = 0; i < nameStr.length; i++) {
+          hash = nameStr.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = Math.abs(hash % 360);
+
+        return {
+          id: String(c.id),
+          name: c.name,
+          initials,
+          hue,
+          online: c.isOnline ?? false,
+          nick: c.nickName || undefined,
+          phone: c.phone || undefined,
+          avatar: c.avatar || undefined,
+        };
+      });
+
+      const mappedRequests: FriendRequest[] = requestsRes.map((r) => {
+        const initials = (r.name || "FR")
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase();
+        let hash = 0;
+        const nameStr = r.name || "";
+        for (let i = 0; i < nameStr.length; i++) {
+          hash = nameStr.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = Math.abs(hash % 360);
+
+        return {
+          id: String(r.id),
+          name: r.name,
+          initials,
+          hue,
+          source: r.source || "Zalo Request",
+          avatar: r.avatar || undefined,
+        };
+      });
+
+      setFriends(mappedFriends);
+      setRequests(mappedRequests);
+    } catch (err) {
+      console.error("Failed to load contacts/requests:", err);
+    }
+  }, [accountPhone]);
+
+  useEffect(() => {
+    void loadContacts();
+    setQuery("");
+  }, [loadContacts]);
+
+  const grouped = useMemo<ReadonlyArray<readonly [string, ReadonlyArray<Friend>]>>(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = friends.filter((f) =>
+      !q || `${f.name} ${f.nick ?? ""} ${f.phone ?? ""}`.toLowerCase().includes(q),
+    );
+    const map = new Map<string, Friend[]>();
+    for (const f of filtered) {
+      const letter = (f.name.trim()[0] ?? "#").toUpperCase();
+      const bucket = map.get(letter);
+      if (bucket) bucket.push(f);
+      else map.set(letter, [f]);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], "vi"));
+  }, [friends, query]);
+
+  const accept = useCallback(async (req: FriendRequest) => {
+    if (!accountPhone) return;
+    try {
+      await api.post(`/bots/zalo/${accountPhone}/contacts/requests/${req.id}/accept`);
+      setRequests((prev) => prev.filter((r) => r.id !== req.id));
+      setFriends((prev) => [
+        ...prev,
+        { id: req.id, name: req.name, initials: req.initials, hue: req.hue, online: false },
+      ]);
+    } catch (e) {
+      console.error("Failed to accept request:", e);
+    }
+  }, [accountPhone]);
+
+  const decline = useCallback(async (req: FriendRequest) => {
+    if (!accountPhone) return;
+    try {
+      await api.post(`/bots/zalo/${accountPhone}/contacts/requests/${req.id}/decline`);
+      setRequests((prev) => prev.filter((r) => r.id !== req.id));
+    } catch (e) {
+      console.error("Failed to decline request:", e);
+    }
+  }, [accountPhone]);
+
+  return { friends, requests, grouped, query, setQuery, accept, decline };
+}

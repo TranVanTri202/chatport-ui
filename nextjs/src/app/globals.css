@@ -1,0 +1,117 @@
+/**
+ * Theme tokens. Dark is the default (:root); light overrides under [data-theme="light"].
+ * Components reference these only through Tailwind classes (see tailwind.config.ts),
+ * e.g. `bg-surface`, `text-muted`, `text-accent` — never raw hex.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0e1211;
+  --surface-0: #141917;
+  --surface: #181e1b;
+  --surface-2: #1e2522;
+  --surface-3: #28312c;
+  --chat-bg: #111614;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-soft: rgba(255, 255, 255, 0.04);
+  --text: #e6ece8;
+  --muted: #889389;
+  --accent: #5cc996;
+  --accent-dim: rgba(92, 201, 150, 0.13);
+  --accent-border: rgba(92, 201, 150, 0.28);
+  --danger: #d9685f;
+  --warning: #e0a23a;
+  --bubble-me-bg: #213f5a;
+  --bubble-me-text: #d8e8f5;
+  --shadow-card: none;
+}
+
+:root[data-theme="light"] {
+  --bg: #f3f5f1;
+  --surface-0: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f2f4ef;
+  --surface-3: #e8ebe4;
+  --chat-bg: #eef1ec;
+  --border: rgba(34, 42, 37, 0.1);
+  --border-soft: rgba(34, 42, 37, 0.055);
+  --text: #232a26;
+  --muted: #69736c;
+  --accent: #4ab98a;
+  --accent-dim: rgba(74, 185, 138, 0.13);
+  --accent-border: rgba(74, 185, 138, 0.28);
+  --bubble-me-bg: #d6e9fb;
+  --bubble-me-text: #143150;
+  --shadow-card: 0 1px 3px rgba(34, 42, 37, 0.07);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Chat bubbles — three visual roles: them (received), me (manual), ai (auto). */
+.bubble-them {
+  background: var(--bubble-them-bg, var(--surface-2));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 6px;
+  box-shadow: var(--shadow-card);
+}
+.bubble-me {
+  background: var(--bubble-me-bg);
+  color: var(--bubble-me-text);
+  border-bottom-right-radius: 6px;
+  box-shadow: var(--shadow-card);
+}
+.bubble-ai {
+  background: linear-gradient(160deg, var(--accent), #46b683);
+  color: #0b2419;
+  border-bottom-right-radius: 6px;
+}
+.bubble-ai strong { color: #0b2419; }
+
+.chat-area {
+  background-color: var(--chat-bg);
+  background-image: radial-gradient(circle at 1px 1px, var(--border-soft) 1.1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Premium message bubble entrance animation */
+@keyframes messageAppear {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-message {
+  animation: messageAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
