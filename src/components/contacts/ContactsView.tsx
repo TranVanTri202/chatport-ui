@@ -20,6 +20,19 @@ export function ContactsView(): JSX.Element {
   const { grouped, requests, friends, query, setQuery, accept, decline } = useContacts(account?.phone);
   const [tab, setTab] = useState<"friends" | "requests">("friends");
   const [addModal, setAddModal] = useState(false);
+  const handleStartChat = async (friend: any) => {
+    if (!account) return;
+    try {
+      const conv = await api.post<any>(`/bots/zalo/${account.phone}/contacts/chat`, {
+        userId: friend.id,
+        displayName: friend.name,
+        avatar: friend.avatar,
+      });
+      window.location.href = `/chat?account=${account.phone}&convo=${conv.id}`;
+    } catch (err) {
+      console.error("Failed to start conversation:", err);
+    }
+  };
 
   if (!account) return <div />;
 
@@ -73,13 +86,17 @@ export function ContactsView(): JSX.Element {
                 <div key={letter}>
                   <div className="p-[16px_6px_6px] text-xs font-bold tracking-wide text-accent">{letter}</div>
                   {list.map((f, i) => (
-                    <div key={`${f.name}-${i}`} className="flex items-center gap-3 rounded-xl p-[10px_12px] hover:bg-surface-2">
+                    <button
+                      key={`${f.name}-${i}`}
+                      onClick={() => handleStartChat(f)}
+                      className="flex w-full items-center gap-3 rounded-xl p-[10px_12px] text-left hover:bg-surface-2 transition-colors cursor-pointer"
+                    >
                       <Avatar spec={{ hue: f.hue, initials: f.initials, img: f.avatar }} size={42} status={f.online ? "online" : "offline"} />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13.5px] font-semibold">{f.name}</div>
                         <div className="truncate text-xs text-muted">{f.nick ? `~ ${f.nick}` : vi ? "Bạn bè" : "Friend"}{f.phone ? ` · ${f.phone}` : ""}</div>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ))

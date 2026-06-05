@@ -68,7 +68,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           phone: c.threadExternalId,
           nick: c.title,
           friend: c.threadType === "user",
-          members: c.threadType === "group" ? 10 : undefined,
+          members: c.threadType === "group" ? ((c.metadata as any)?.memberCount ?? 0) : undefined,
           avatarImg: c.avatar || undefined,
         };
       });
@@ -147,42 +147,49 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
   }, [botExternalId, activeId, conversations]);
 
   useEffect(() => {
-    if (!socket || !activeId) return;
+    if (!socket) return;
 
     const handleNewMessage = (data: any) => {
-      if (String(data.conversationId) === activeId) {
+      if (activeId && String(data.conversationId) === activeId) {
         let img: string | undefined = undefined;
         let fileName: string | undefined = undefined;
         let fileSize: string | undefined = undefined;
+        let kind: "text" | "image" | "file" = "text";
 
         if (data.attachments && data.attachments.length > 0) {
           const first = data.attachments[0];
-          if (data.direction === "in" && first.type === "image") {
+          if (first.type === "image") {
+            kind = "image";
             img = first.url;
+          } else if (first.type === "file") {
+            kind = "file";
+            fileName = first.name || "Attachment";
+            fileSize = first.size || "Unknown size";
           }
         }
 
         const newMsg: Message = {
           id: String(data.messageId),
           from: data.direction === "in" ? "them" : "me",
-          kind: data.attachments && data.attachments.length > 0 ? "image" : "text",
+          kind,
           time: formatTime(new Date().toISOString()),
           text: data.text || undefined,
           img,
           fileName,
           fileSize,
         };
-        setMessages((prev) => [...prev, newMsg]);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
       }
       void fetchConversations();
     };
 
     socket.on("message:new", handleNewMessage);
-    socket.on("message:sent", handleNewMessage);
 
     return () => {
       socket.off("message:new", handleNewMessage);
-      socket.off("message:sent", handleNewMessage);
     };
   }, [socket, activeId, fetchConversations]);
 
