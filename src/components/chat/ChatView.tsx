@@ -33,7 +33,7 @@ export function ChatView({ initialAccountId, initialConvoId }: ChatViewProps): J
 }
 
 function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { readonly account: Account; readonly accounts: ReadonlyArray<Account>; readonly vi: boolean; readonly onSwitch: (id: string) => void; readonly initialConvoId?: string }): JSX.Element {
-  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, reactToMessage, recallMessage, sendTypingStatus } = useChat(account.convos, initialConvoId);
+  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, reactToMessage, recallMessage, sendTypingStatus, pinMessage, unpinMessage } = useChat(account.convos, initialConvoId);
   const [filter, setFilter] = useState<"all" | "direct" | "group">("all");
   const [query, setQuery] = useState("");
   const [botMenu, setBotMenu] = useState(false);
@@ -99,7 +99,7 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
         </div>
       </div>
 
-      <ChatThread key={active?.id ?? "empty"} convo={active} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={sendFile} onReactToMessage={reactToMessage} onRecallMessage={recallMessage} onSendTypingStatus={sendTypingStatus} />
+      <ChatThread key={active?.id ?? "empty"} convo={active} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={sendFile} onReactToMessage={reactToMessage} onRecallMessage={recallMessage} onSendTypingStatus={sendTypingStatus} onPinMessage={pinMessage} onUnpinMessage={unpinMessage} />
       {active ? <ChatInfoPanel account={account} convo={active} vi={vi} /> : <div className="border-l border-border bg-surface-0" />}
     </div>
   );
@@ -127,18 +127,21 @@ function ConvoRow({ convo, active, onClick }: { readonly convo: Conversation; re
   );
 }
 
-function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage, onRecallMessage, onSendTypingStatus }: {
+function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage, onRecallMessage, onSendTypingStatus, onPinMessage, onUnpinMessage }: {
   readonly convo: Conversation | undefined; readonly messages: ReadonlyArray<Message>;
   readonly expired: boolean; readonly vi: boolean;
   readonly onSendText: (t: string) => void; readonly onSendImage: (f: File, caption?: string) => void; readonly onSendFile: (f: File) => void;
   readonly onReactToMessage: (messageExternalId: string, reactIcon: string) => Promise<void>;
   readonly onRecallMessage: (messageExternalId: string) => Promise<void>;
   readonly onSendTypingStatus: (isTyping: boolean) => void;
+  readonly onPinMessage: (messageExternalId: string) => Promise<void>;
+  readonly onUnpinMessage: (topicId: string) => Promise<void>;
 }): JSX.Element {
   const [draft, setDraft] = useState("");
   const [auto, setAuto] = useState(Boolean(convo?.auto));
   const [search, setSearch] = useState("");
   const [searchOn, setSearchOn] = useState(false);
+  const [pinnedExpanded, setPinnedExpanded] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -250,9 +253,90 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
         </div>
       ) : null}
 
+      {/* Pinned messages banner */}
+      {(() => {
+        const pinned = (convo as any)?.pinnedMessages || [];
+        if (pinned.length === 0) return null;
+        return (
+          <div className="border-b border-border bg-surface-1">
+            {/* Collapsed header / Single pin banner */}
+            <div className="flex items-center justify-between p-[8px_16px] text-xs select-none">
+              <div 
+                className="flex flex-1 items-center min-w-0 cursor-pointer" 
+                onClick={() => pinned.length > 1 && setPinnedExpanded(!pinnedExpanded)}
+              >
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="text-accent shrink-0 mr-2">
+                  <line x1="12" y1="17" x2="12" y2="22" />
+                  <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.12-2.65A2 2 0 0 1 16 10.11V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v5.11a2 2 0 0 1-.44 1.24L5.44 14a2 2 0 0 0-.44 1.24z" />
+                </svg>
+                <div className="min-w-0 flex-1">
+                  {pinned.length === 1 ? (
+                    <div className="truncate text-muted">
+                      <span className="font-semibold text-text mr-1">{vi ? "Tin ghim:" : "Pinned:"}</span>
+                      {pinned[0].params?.title || (vi ? "Bảng tin nhóm" : "Board note")}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 font-semibold text-text">
+                      <span>{vi ? `Tin ghim (${pinned.length})` : `Pinned messages (${pinned.length})`}</span>
+                      <Icon name="chevD" size={12} className={`text-muted transition-transform duration-200 ${pinnedExpanded ? "rotate-180" : ""}`} />
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2 shrink-0 ml-2">
+                {pinned.length === 1 && (
+                  <button
+                    onClick={() => onUnpinMessage(pinned[0].id)}
+                    className="p-1 hover:bg-surface-3 rounded text-muted hover:text-danger transition-colors cursor-pointer"
+                    title={vi ? "Bỏ ghim" : "Unpin"}
+                  >
+                    <Icon name="x" size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Expanded view for multiple pinned messages */}
+            {pinnedExpanded && pinned.length > 1 && (
+              <div className="border-t border-border bg-surface-0 divide-y divide-border max-h-[160px] overflow-y-auto no-scrollbar">
+                {pinned.map((item: any) => (
+                  <div key={item.id} className="flex items-center justify-between p-[8px_16px] hover:bg-surface-2 transition-colors text-xs">
+                    <div className="min-w-0 flex-1 truncate text-muted mr-3">
+                      <span className="font-semibold text-text mr-1">
+                        {item.params?.senderName ? `${item.params.senderName}:` : (vi ? "Tin nhắn:" : "Message:")}
+                      </span>
+                      {item.params?.title || (vi ? "Bảng tin nhóm" : "Board note")}
+                    </div>
+                    <button
+                      onClick={() => onUnpinMessage(item.id)}
+                      className="p-1 hover:bg-surface-3 rounded text-muted hover:text-danger transition-colors shrink-0 cursor-pointer"
+                      title={vi ? "Bỏ ghim" : "Unpin"}
+                    >
+                      <Icon name="x" size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       <div ref={scrollRef} className="flex flex-1 flex-col gap-1 overflow-y-auto p-[22px_24px] no-scrollbar">
         <div className="mb-3.5 text-center"><span className="rounded-full bg-surface-2 px-3 py-1 text-[11px] text-muted">{vi ? "Hôm nay" : "Today"}</span></div>
-        {shown.map((m, i) => <Bubble key={m.id} message={m} prev={shown[i - 1]} vi={vi} highlight={searchOn ? search.trim() : ""} onReact={onReactToMessage} onRecall={onRecallMessage} />)}
+        {shown.map((m, i) => (
+          <Bubble
+            key={m.id}
+            message={m}
+            prev={shown[i - 1]}
+            vi={vi}
+            highlight={searchOn ? search.trim() : ""}
+            onReact={onReactToMessage}
+            onRecall={onRecallMessage}
+            onPin={onPinMessage}
+          />
+        ))}
       </div>
 
       {expired ? (
@@ -303,7 +387,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
   );
 }
 
-function Bubble({ message, prev, vi, highlight, onReact, onRecall }: { readonly message: Message; readonly prev: Message | undefined; readonly vi: boolean; readonly highlight: string; readonly onReact: (messageExternalId: string, reactIcon: string) => Promise<void>; readonly onRecall: (messageExternalId: string) => Promise<void> }): JSX.Element {
+function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin }: { readonly message: Message; readonly prev: Message | undefined; readonly vi: boolean; readonly highlight: string; readonly onReact: (messageExternalId: string, reactIcon: string) => Promise<void>; readonly onRecall: (messageExternalId: string) => Promise<void>; readonly onPin: (messageExternalId: string) => Promise<void> }): JSX.Element {
   const mine = message.from === "me" || message.from === "ai";
   const isAI = message.from === "ai";
   const showWho = message.who && (!prev || prev.who !== message.who);
@@ -368,6 +452,11 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall }: { readonly 
     if (confirm(vi ? "Bạn có chắc chắn muốn thu hồi tin nhắn này?" : "Are you sure you want to recall this message?")) {
       void onRecall(message.messageExternalId || "");
     }
+    setContextMenu(null);
+  };
+
+  const handlePinClick = () => {
+    void onPin(message.messageExternalId || "");
     setContextMenu(null);
   };
 
@@ -561,7 +650,7 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall }: { readonly 
               </button>
             )}
 
-            <button onClick={() => setContextMenu(null)} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
+            <button onClick={handlePinClick} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
               <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>

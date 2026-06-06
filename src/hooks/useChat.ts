@@ -16,6 +16,8 @@ export interface UseChatResult {
   reactToMessage: (messageExternalId: string, reactIcon: string) => Promise<void>;
   recallMessage: (messageExternalId: string) => Promise<void>;
   sendTypingStatus: (isTyping: boolean) => void;
+  pinMessage: (messageExternalId: string) => Promise<void>;
+  unpinMessage: (topicId: string) => Promise<void>;
 }
 
 export function useChat(convoKey: string, initialConvoId?: string): UseChatResult {
@@ -73,6 +75,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           friend: c.threadType === "user",
           members: c.threadType === "group" ? ((c.metadata as any)?.memberCount ?? 0) : undefined,
           avatarImg: c.avatar || undefined,
+          pinnedMessages: (c.metadata as any)?.pinnedMessages || [],
         };
       });
       setConversations(mappedConvos);
@@ -355,6 +358,35 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     setActiveId(id);
   }, []);
 
+  const pinMessage = useCallback(async (messageExternalId: string) => {
+    if (!botExternalId || !active) return;
+    try {
+      await api.post("/messages/pin", {
+        botExternalId,
+        threadId: active.phone,
+        threadType: active.type === "group" ? "group" : "user",
+        messageExternalId,
+      });
+      void fetchConversations();
+    } catch (error) {
+      console.error("Failed to pin message:", error);
+    }
+  }, [botExternalId, active, fetchConversations]);
+
+  const unpinMessage = useCallback(async (topicId: string) => {
+    if (!botExternalId || !active) return;
+    try {
+      await api.post("/messages/unpin", {
+        botExternalId,
+        threadId: active.phone,
+        topicId,
+      });
+      void fetchConversations();
+    } catch (error) {
+      console.error("Failed to unpin message:", error);
+    }
+  }, [botExternalId, active, fetchConversations]);
+
   return {
     conversations,
     active,
@@ -366,5 +398,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     reactToMessage,
     recallMessage,
     sendTypingStatus,
+    pinMessage,
+    unpinMessage,
   };
 }

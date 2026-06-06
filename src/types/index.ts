@@ -56,6 +56,7 @@ export interface Conversation {
   readonly friend?: boolean;
   /** Runtime overrides (renamed group, new group photo). */
   readonly avatarImg?: string;
+  readonly pinnedMessages?: any[];
 }
 
 export type MessageSender = "them" | "me" | "ai";
