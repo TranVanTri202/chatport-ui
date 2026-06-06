@@ -81,6 +81,7 @@ export interface Message {
   readonly fileSize?: string;
   readonly videoUrl?: string;
   readonly reactions?: ReadonlyArray<MessageReaction>;
+  readonly isRecalled?: boolean;
 }
 
 export interface ReferenceDoc {

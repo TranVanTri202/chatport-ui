@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Account, Conversation, Message } from "@/types";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useChat } from "@/hooks/useChat";
@@ -32,7 +33,7 @@ export function ChatView({ initialAccountId, initialConvoId }: ChatViewProps): J
 }
 
 function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { readonly account: Account; readonly accounts: ReadonlyArray<Account>; readonly vi: boolean; readonly onSwitch: (id: string) => void; readonly initialConvoId?: string }): JSX.Element {
-  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, reactToMessage } = useChat(account.convos, initialConvoId);
+  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, reactToMessage, recallMessage, sendTypingStatus } = useChat(account.convos, initialConvoId);
   const [filter, setFilter] = useState<"all" | "direct" | "group">("all");
   const [query, setQuery] = useState("");
   const [botMenu, setBotMenu] = useState(false);
@@ -98,7 +99,7 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
         </div>
       </div>
 
-      <ChatThread key={active?.id ?? "empty"} convo={active} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={sendFile} onReactToMessage={reactToMessage} />
+      <ChatThread key={active?.id ?? "empty"} convo={active} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={sendFile} onReactToMessage={reactToMessage} onRecallMessage={recallMessage} onSendTypingStatus={sendTypingStatus} />
       {active ? <ChatInfoPanel account={account} convo={active} vi={vi} /> : <div className="border-l border-border bg-surface-0" />}
     </div>
   );
@@ -126,11 +127,13 @@ function ConvoRow({ convo, active, onClick }: { readonly convo: Conversation; re
   );
 }
 
-function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage }: {
+function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage, onRecallMessage, onSendTypingStatus }: {
   readonly convo: Conversation | undefined; readonly messages: ReadonlyArray<Message>;
   readonly expired: boolean; readonly vi: boolean;
   readonly onSendText: (t: string) => void; readonly onSendImage: (f: File, caption?: string) => void; readonly onSendFile: (f: File) => void;
   readonly onReactToMessage: (messageExternalId: string, reactIcon: string) => Promise<void>;
+  readonly onRecallMessage: (messageExternalId: string) => Promise<void>;
+  readonly onSendTypingStatus: (isTyping: boolean) => void;
 }): JSX.Element {
   const [draft, setDraft] = useState("");
   const [auto, setAuto] = useState(Boolean(convo?.auto));
@@ -172,7 +175,32 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
 
   if (!convo) return <div className="grid place-items-center bg-chat text-muted">—</div>;
   
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isTypingRef = useRef(false);
+
+  const handleInputChange = (val: string) => {
+    setDraft(val);
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      onSendTypingStatus(true);
+    }
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+      onSendTypingStatus(false);
+    }, 2000);
+  };
+
   const send = (): void => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      onSendTypingStatus(false);
+    }
+
     if (selectedImage) {
       onSendImage(selectedImage, draft);
       setSelectedImage(null);
@@ -224,7 +252,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
 
       <div ref={scrollRef} className="flex flex-1 flex-col gap-1 overflow-y-auto p-[22px_24px] no-scrollbar">
         <div className="mb-3.5 text-center"><span className="rounded-full bg-surface-2 px-3 py-1 text-[11px] text-muted">{vi ? "Hôm nay" : "Today"}</span></div>
-        {shown.map((m, i) => <Bubble key={m.id} message={m} prev={shown[i - 1]} vi={vi} highlight={searchOn ? search.trim() : ""} onReact={onReactToMessage} />)}
+        {shown.map((m, i) => <Bubble key={m.id} message={m} prev={shown[i - 1]} vi={vi} highlight={searchOn ? search.trim() : ""} onReact={onReactToMessage} onRecall={onRecallMessage} />)}
       </div>
 
       {expired ? (
@@ -264,7 +292,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
               <button onClick={() => imgRef.current?.click()} className="grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border text-muted hover:text-text"><Icon name="image" size={18} /></button>
               <button onClick={() => fileRef.current?.click()} className="grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border text-muted hover:text-text"><Icon name="paperclip" size={18} /></button>
               <div className="flex flex-1 items-center rounded-xl border border-border bg-surface-2 p-[4px_6px_4px_14px]">
-                <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={vi ? "Nhập tin nhắn…" : "Type a message…"} className="flex-1 bg-transparent py-2 text-sm text-text outline-none" />
+                <input value={draft} onChange={(e) => handleInputChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={vi ? "Nhập tin nhắn…" : "Type a message…"} className="flex-1 bg-transparent py-2 text-sm text-text outline-none" />
               </div>
               <Button icon="send" onClick={send} className="rounded-xl px-4 py-2.5">{vi ? "Gửi" : "Send"}</Button>
             </div>
@@ -275,13 +303,73 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
   );
 }
 
-function Bubble({ message, prev, vi, highlight, onReact }: { readonly message: Message; readonly prev: Message | undefined; readonly vi: boolean; readonly highlight: string; readonly onReact: (messageExternalId: string, reactIcon: string) => Promise<void> }): JSX.Element {
+function Bubble({ message, prev, vi, highlight, onReact, onRecall }: { readonly message: Message; readonly prev: Message | undefined; readonly vi: boolean; readonly highlight: string; readonly onReact: (messageExternalId: string, reactIcon: string) => Promise<void>; readonly onRecall: (messageExternalId: string) => Promise<void> }): JSX.Element {
   const mine = message.from === "me" || message.from === "ai";
   const isAI = message.from === "ai";
   const showWho = message.who && (!prev || prev.who !== message.who);
   const cls = isAI ? "bubble-ai" : mine ? "bubble-me" : "bubble-them";
   const time = message.time === "now" ? (vi ? "vừa xong" : "now") : message.time;
   const [showPicker, setShowPicker] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showRecalledContent, setShowRecalledContent] = useState(false);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (message.isRecalled && !showRecalledContent) return;
+    e.preventDefault();
+    const menuWidth = 180;
+    let x = e.clientX;
+    if (x + menuWidth > window.innerWidth) {
+      x = Math.max(10, window.innerWidth - menuWidth - 10);
+    }
+    setContextMenu({ x, y: e.clientY });
+  };
+
+  const fallbackCopyText = (text: string) => {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.width = "2em";
+    textArea.style.height = "2em";
+    textArea.style.padding = "0";
+    textArea.style.border = "none";
+    textArea.style.outline = "none";
+    textArea.style.boxShadow = "none";
+    textArea.style.background = "transparent";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand("copy");
+    } catch (err) {
+      console.error("Fallback copy failed:", err);
+    }
+    document.body.removeChild(textArea);
+  };
+
+  const handleCopy = () => {
+    if (message.text) {
+      const textToCopy = message.text;
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(textToCopy)
+          .catch((err) => {
+            console.warn("Clipboard API failed, using fallback:", err);
+            fallbackCopyText(textToCopy);
+          });
+      } else {
+        fallbackCopyText(textToCopy);
+      }
+    }
+    setContextMenu(null);
+  };
+
+  const handleRecallClick = () => {
+    if (confirm(vi ? "Bạn có chắc chắn muốn thu hồi tin nhắn này?" : "Are you sure you want to recall this message?")) {
+      void onRecall(message.messageExternalId || "");
+    }
+    setContextMenu(null);
+  };
 
   return (
     <div className={`mt-2 flex flex-col ${mine ? "items-end" : "items-start"} animate-message group/bubble relative`}>
@@ -289,21 +377,88 @@ function Bubble({ message, prev, vi, highlight, onReact }: { readonly message: M
       {isAI ? <div className="m-[0_4px_5px] flex items-center gap-1.5 text-[10.5px] font-semibold text-accent"><Icon name="bot" size={12} /> {vi ? "AI tự gửi" : "Sent by AI"}</div> : null}
       
       <div className="flex items-center gap-2 max-w-[76%] relative">
-        {mine && (
-          <ReactionTrigger
-            message={message}
-            onReact={onReact}
-            showPicker={showPicker}
-            setShowPicker={setShowPicker}
-            mine={mine}
-          />
+        {mine && !message.isRecalled && (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const menuWidth = 180;
+                let x = e.clientX;
+                if (x + menuWidth > window.innerWidth) {
+                  x = Math.max(10, window.innerWidth - menuWidth - 10);
+                }
+                setContextMenu({
+                  x,
+                  y: e.clientY
+                });
+              }}
+              className="opacity-0 group-hover/bubble:opacity-100 transition-opacity duration-200 grid h-6 w-6 place-items-center rounded-full border border-border bg-surface-2 hover:bg-surface-3 text-muted cursor-pointer shadow-sm"
+              title={vi ? "Thêm" : "More"}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
+              </svg>
+            </button>
+            <ReactionTrigger
+              message={message}
+              onReact={onReact}
+              showPicker={showPicker}
+              setShowPicker={setShowPicker}
+              mine={mine}
+            />
+          </div>
         )}
         
-        <div className={`${cls} flex-1 rounded-[17px] p-[10px_14px] text-[13.5px] leading-relaxed relative`} style={message.kind === "image" || message.kind === "video" ? { padding: 4 } : undefined}>
-          {message.kind === "image" ? (
-            <img src={message.img} alt="" className="block w-[248px] max-w-full rounded-xl object-cover" />
+        <div
+          onContextMenu={handleContextMenu}
+          className={`${cls} flex-1 rounded-[17px] p-[10px_14px] text-[13.5px] leading-relaxed relative cursor-pointer select-text`}
+          style={(!message.isRecalled || (showRecalledContent && (message.kind === "image" || message.kind === "video"))) ? (message.kind === "image" || message.kind === "video" ? { padding: 4 } : undefined) : undefined}
+        >
+          {message.isRecalled ? (
+            <div className="flex flex-col gap-1.5 min-w-[175px]">
+              <div className="flex items-center justify-between gap-4">
+                <span className="italic opacity-60 flex items-center gap-1.5 select-none text-[12.5px]">
+                  <Icon name="alert" size={13} />
+                  {vi ? "Tin nhắn đã thu hồi" : "Message recalled"}
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowRecalledContent(!showRecalledContent);
+                  }}
+                  className="text-accent hover:underline font-bold text-[11px] not-italic select-none cursor-pointer"
+                >
+                  {showRecalledContent ? (vi ? "Ẩn" : "Xem") : (vi ? "Xem lại" : "Review")}
+                </button>
+              </div>
+
+              {showRecalledContent && (
+                <div className="mt-1 pt-1.5 border-t border-dashed border-text/10 opacity-75">
+                  {message.kind === "image" ? (
+                    <img src={message.img} alt="" className="block w-[248px] max-w-full rounded-xl object-cover animate-fade-in" />
+                  ) : message.kind === "video" ? (
+                    <video src={message.videoUrl} controls className="block w-[320px] max-w-full rounded-xl object-cover animate-fade-in" />
+                  ) : message.kind === "file" ? (
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-[38px] w-[38px] place-items-center rounded-[9px] bg-black/15"><Icon name="doc" size={19} /></span>
+                      <div className="min-w-0">
+                        <div className="max-w-[180px] truncate text-[13px] font-semibold">{message.fileName}</div>
+                        <div className="text-[11px] opacity-70">{message.fileSize}</div>
+                      </div>
+                      <Icon name="download" size={16} className="opacity-70" />
+                    </div>
+                  ) : (
+                    <Highlighted text={message.text ?? ""} q={highlight} />
+                  )}
+                </div>
+              )}
+            </div>
+          ) : message.kind === "image" ? (
+            <img src={message.img} alt="" className="block w-[248px] max-w-full rounded-xl object-cover animate-fade-in" />
           ) : message.kind === "video" ? (
-            <video src={message.videoUrl} controls className="block w-[320px] max-w-full rounded-xl object-cover" />
+            <video src={message.videoUrl} controls className="block w-[320px] max-w-full rounded-xl object-cover animate-fade-in" />
           ) : message.kind === "file" ? (
             <div className="flex items-center gap-3">
               <span className="grid h-[38px] w-[38px] place-items-center rounded-[9px] bg-black/15"><Icon name="doc" size={19} /></span>
@@ -316,9 +471,9 @@ function Bubble({ message, prev, vi, highlight, onReact }: { readonly message: M
           ) : (
             <Highlighted text={message.text ?? ""} q={highlight} />
           )}
-          <div className="mt-1 text-right text-[10px] opacity-70">{time}</div>
+          <div className="mt-1 text-right text-[10px] opacity-70 select-none">{time}</div>
 
-          {message.reactions && message.reactions.length > 0 && (
+          {!message.isRecalled && message.reactions && message.reactions.length > 0 && (
             <div className={`absolute -bottom-2.5 ${mine ? 'right-4' : 'left-4'} flex items-center gap-1 bg-surface-2 border border-border rounded-full px-1.5 py-0.5 shadow-md text-xs select-none backdrop-blur-sm z-10 hover:bg-surface-3 transition-colors cursor-pointer`}>
               {Array.from(new Set(message.reactions.map(r => r.reaction))).map(emoji => {
                 const count = message.reactions!.filter(r => r.reaction === emoji).length;
@@ -334,16 +489,106 @@ function Bubble({ message, prev, vi, highlight, onReact }: { readonly message: M
           )}
         </div>
 
-        {!mine && (
-          <ReactionTrigger
-            message={message}
-            onReact={onReact}
-            showPicker={showPicker}
-            setShowPicker={setShowPicker}
-            mine={mine}
-          />
+        {!mine && !message.isRecalled && (
+          <div className="flex items-center gap-1.5">
+            <ReactionTrigger
+              message={message}
+              onReact={onReact}
+              showPicker={showPicker}
+              setShowPicker={setShowPicker}
+              mine={mine}
+            />
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const menuWidth = 180;
+                let x = e.clientX;
+                if (x + menuWidth > window.innerWidth) {
+                  x = Math.max(10, window.innerWidth - menuWidth - 10);
+                }
+                setContextMenu({
+                  x,
+                  y: e.clientY
+                });
+              }}
+              className="opacity-0 group-hover/bubble:opacity-100 transition-opacity duration-200 grid h-6 w-6 place-items-center rounded-full border border-border bg-surface-2 hover:bg-surface-3 text-muted cursor-pointer shadow-sm"
+              title={vi ? "Thêm" : "More"}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
+              </svg>
+            </button>
+          </div>
         )}
       </div>
+
+      {contextMenu && typeof document !== "undefined" && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[9999] cursor-default"
+            onClick={() => setContextMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu(null);
+            }}
+          />
+          <div
+            className="fixed z-[10000] w-[180px] rounded-lg border border-border bg-surface shadow-2xl p-1 text-[12.5px] font-medium text-text flex flex-col gap-0.5 cursor-default select-none animate-pop-in"
+            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button onClick={() => setContextMenu(null)} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
+              <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+              <span>{vi ? "Trả lời" : "Reply"}</span>
+            </button>
+            
+            <button onClick={() => setContextMenu(null)} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
+              <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 10.742l4.61 2.305m0 0l4.61-2.305m-4.61 2.305a3.5 3.5 0 11-7 0 3.5 3.5 0 017 0zm0 0a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm0 0a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" />
+              </svg>
+              <span>{vi ? "Chia sẻ" : "Share"}</span>
+            </button>
+
+            {message.text && (
+              <button onClick={handleCopy} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
+                <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 11.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+                </svg>
+                <span>{vi ? "Copy tin nhắn" : "Copy"}</span>
+              </button>
+            )}
+
+            <button onClick={() => setContextMenu(null)} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
+              <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              <span>{vi ? "Ghim tin nhắn" : "Pin"}</span>
+            </button>
+
+            <button onClick={() => setContextMenu(null)} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
+              <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.907c.969 0 1.371 1.24.588 1.81l-3.97 2.883a1 1 0 00-.364 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.971-2.883a1 1 0 00-1.175 0l-3.97 2.883c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.364-1.118l-3.97-2.883c-.783-.57-.38-1.81.588-1.81h4.906a1 1 0 00.95-.69l1.519-4.674z" />
+              </svg>
+              <span>{vi ? "Đánh dấu tin nhắn" : "Star"}</span>
+            </button>
+
+            <div className="h-px bg-border my-1" />
+
+            {mine && !message.isRecalled && (
+              <button onClick={handleRecallClick} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 text-danger hover:bg-danger/10 transition-colors">
+                <svg className="w-4 h-4 text-danger" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span className="font-semibold">{vi ? "Thu hồi" : "Recall"}</span>
+              </button>
+            )}
+          </div>
+        </>,
+        document.body
+      )}
     </div>
   );
 }

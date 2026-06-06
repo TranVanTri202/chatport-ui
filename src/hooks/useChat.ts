@@ -14,6 +14,8 @@ export interface UseChatResult {
   sendImage: (file: File, caption?: string) => void;
   sendFile: (file: File) => void;
   reactToMessage: (messageExternalId: string, reactIcon: string) => Promise<void>;
+  recallMessage: (messageExternalId: string) => Promise<void>;
+  sendTypingStatus: (isTyping: boolean) => void;
 }
 
 export function useChat(convoKey: string, initialConvoId?: string): UseChatResult {
@@ -124,6 +126,18 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           }
         }
 
+        let isRecalled = false;
+        if (m.raw) {
+          try {
+            const rawObj = typeof m.raw === "string" ? JSON.parse(m.raw) : m.raw;
+            if (rawObj && rawObj.isRecalled) {
+              isRecalled = true;
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
         return {
           id: String(m.id),
           messageExternalId: m.messageExternalId,
@@ -136,6 +150,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           fileSize,
           videoUrl,
           reactions,
+          isRecalled,
         };
       });
       setMessages(mappedMsgs.reverse());
@@ -190,6 +205,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
 
         const newMsg: Message = {
           id: String(data.messageId),
+          messageExternalId: data.messageExternalId,
           from: data.direction === "in" ? "them" : "me",
           kind,
           time: formatTime(new Date().toISOString()),
@@ -224,12 +240,30 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
       }
     };
 
+    const handleMessageRecalled = (data: any) => {
+      if (activeId && String(data.conversationId) === activeId) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.messageExternalId === data.messageExternalId) {
+              return {
+                ...m,
+                isRecalled: true,
+              };
+            }
+            return m;
+          })
+        );
+      }
+    };
+
     socket.on("message:new", handleNewMessage);
     socket.on("message:reaction", handleMessageReaction);
+    socket.on("message:recalled", handleMessageRecalled);
 
     return () => {
       socket.off("message:new", handleNewMessage);
       socket.off("message:reaction", handleMessageReaction);
+      socket.off("message:recalled", handleMessageRecalled);
     };
   }, [socket, activeId, fetchConversations]);
 
@@ -288,9 +322,49 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     }
   }, [botExternalId, active]);
 
+  const recallMessage = useCallback(async (messageExternalId: string) => {
+    if (!botExternalId || !active) return;
+    try {
+      await api.post("/messages/recall", {
+        botExternalId,
+        threadId: active.phone,
+        threadType: active.type === "group" ? "group" : "user",
+        messageExternalId,
+      });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.messageExternalId === messageExternalId ? { ...m, isRecalled: true } : m
+        )
+      );
+    } catch (error) {
+      console.error("Failed to recall message:", error);
+    }
+  }, [botExternalId, active]);
+
+  const sendTypingStatus = useCallback((isTyping: boolean) => {
+    if (!socket || !botExternalId || !active) return;
+    socket.emit("agent:typing", {
+      botExternalId,
+      threadId: active.phone,
+      threadType: active.type === "group" ? "group" : "user",
+      isTyping,
+    });
+  }, [socket, botExternalId, active]);
+
   const selectConversation = useCallback((id: string) => {
     setActiveId(id);
   }, []);
 
-  return { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, reactToMessage };
+  return {
+    conversations,
+    active,
+    messages,
+    selectConversation,
+    sendText,
+    sendImage,
+    sendFile,
+    reactToMessage,
+    recallMessage,
+    sendTypingStatus,
+  };
 }
