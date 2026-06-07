@@ -17,8 +17,8 @@ export function ContactsView(): JSX.Element {
   const vi = preferences.lang === "vi";
   const [selected, setSelected] = useState(accounts[0]?.id ?? "");
   const account = accounts.find((a) => a.id === selected) ?? accounts[0];
-  const { grouped, requests, friends, query, setQuery, accept, decline } = useContacts(account?.phone);
-  const [tab, setTab] = useState<"friends" | "requests">("friends");
+  const { grouped, requests, sentRequests, friends, query, setQuery, accept, decline } = useContacts(account?.phone);
+  const [tab, setTab] = useState<"friends" | "requests" | "sent-requests">("friends");
   const [addModal, setAddModal] = useState(false);
   const handleStartChat = async (friend: any) => {
     if (!account) return;
@@ -67,7 +67,10 @@ export function ContactsView(): JSX.Element {
             <div className="inline-flex gap-0.5 rounded-[10px] border border-border bg-surface-2 p-[3px]">
               <button onClick={() => setTab("friends")} className={`rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "friends" ? "bg-surface-3 text-text" : "text-muted"}`}>{vi ? "Bạn bè" : "Friends"} · {friends.length}</button>
               <button onClick={() => setTab("requests")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "requests" ? "bg-surface-3 text-text" : "text-muted"}`}>
-                {vi ? "Lời mời" : "Requests"} {requests.length > 0 ? <Badge n={requests.length} /> : null}
+                {vi ? "Lời mời nhận" : "Received"} {requests.length > 0 ? <Badge n={requests.length} /> : null}
+              </button>
+              <button onClick={() => setTab("sent-requests")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "sent-requests" ? "bg-surface-3 text-text" : "text-muted"}`}>
+                {vi ? "Lời mời đã gửi" : "Sent"} {sentRequests.length > 0 ? <Badge n={sentRequests.length} /> : null}
               </button>
             </div>
             {tab === "friends" ? (
@@ -100,22 +103,41 @@ export function ContactsView(): JSX.Element {
                   ))}
                 </div>
               ))
-            ) : requests.length === 0 ? (
-              <Empty text={vi ? "Không có lời mời kết bạn." : "No requests."} />
-            ) : (
-              <div className="flex flex-col gap-2.5 pt-2.5">
-                {requests.map((r, i) => (
-                  <div key={`${r.name}-${i}`} className="flex items-center gap-3 rounded-card border border-border bg-surface p-[13px_16px]">
-                    <Avatar spec={{ hue: r.hue, initials: r.initials, img: r.avatar }} size={44} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold">{r.name}</div>
-                      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted"><Icon name="userPlus" size={12} /> {vi ? "Muốn kết bạn" : "Wants to connect"} · {r.source}</div>
+            ) : tab === "requests" ? (
+              requests.length === 0 ? (
+                <Empty text={vi ? "Không có lời mời kết bạn." : "No requests."} />
+              ) : (
+                <div className="flex flex-col gap-2.5 pt-2.5">
+                  {requests.map((r, i) => (
+                    <div key={`${r.name}-${i}`} className="flex items-center gap-3 rounded-card border border-border bg-surface p-[13px_16px]">
+                      <Avatar spec={{ hue: r.hue, initials: r.initials, img: r.avatar }} size={44} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold">{r.name}</div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted"><Icon name="userPlus" size={12} /> {vi ? "Muốn kết bạn" : "Wants to connect"} · {r.source}</div>
+                      </div>
+                      <Button size="sm" variant="ghost" onClick={() => decline(r)}>{vi ? "Từ chối" : "Decline"}</Button>
+                      <Button size="sm" icon="check" onClick={() => accept(r)}>{vi ? "Đồng ý" : "Accept"}</Button>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => decline(r)}>{vi ? "Từ chối" : "Decline"}</Button>
-                    <Button size="sm" icon="check" onClick={() => accept(r)}>{vi ? "Đồng ý" : "Accept"}</Button>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              sentRequests.length === 0 ? (
+                <Empty text={vi ? "Không có lời mời kết bạn đã gửi." : "No sent requests."} />
+              ) : (
+                <div className="flex flex-col gap-2.5 pt-2.5">
+                  {sentRequests.map((r, i) => (
+                    <div key={`${r.name}-${i}`} className="flex items-center gap-3 rounded-card border border-border bg-surface p-[13px_16px]">
+                      <Avatar spec={{ hue: r.hue, initials: r.initials, img: r.avatar }} size={44} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold">{r.name}</div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted"><Icon name="userPlus" size={12} /> {vi ? "Lời nhắn" : "Greeting"} · {r.source}</div>
+                      </div>
+                      <span className="text-xs text-muted font-medium italic">{vi ? "Đang chờ phản hồi" : "Pending response"}</span>
+                    </div>
+                  ))}
+                </div>
+              )
             )}
           </div>
         </div>

@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 export interface UseContactsResult {
   readonly friends: ReadonlyArray<Friend>;
   readonly requests: ReadonlyArray<FriendRequest>;
+  readonly sentRequests: ReadonlyArray<FriendRequest>;
   readonly grouped: ReadonlyArray<readonly [string, ReadonlyArray<Friend>]>;
   setQuery: (q: string) => void;
   readonly query: string;
@@ -16,17 +17,20 @@ export interface UseContactsResult {
 export function useContacts(accountPhone?: string): UseContactsResult {
   const [friends, setFriends] = useState<ReadonlyArray<Friend>>([]);
   const [requests, setRequests] = useState<ReadonlyArray<FriendRequest>>([]);
+  const [sentRequests, setSentRequests] = useState<ReadonlyArray<FriendRequest>>([]);
   const [query, setQuery] = useState("");
 
   const loadContacts = useCallback(async () => {
     if (!accountPhone) {
       setFriends([]);
       setRequests([]);
+      setSentRequests([]);
       return;
     }
     try {
       const contactsRes = await api.get<any[]>(`/bots/zalo/${accountPhone}/contacts`);
       const requestsRes = await api.get<any[]>(`/bots/zalo/${accountPhone}/contacts/requests`);
+      const sentRequestsRes = await api.get<any[]>(`/bots/zalo/${accountPhone}/contacts/sent-requests`);
 
       const mappedFriends: Friend[] = contactsRes.map((c) => {
         const initials = (c.name || "ZF")
@@ -78,8 +82,33 @@ export function useContacts(accountPhone?: string): UseContactsResult {
         };
       });
 
+      const mappedSentRequests: FriendRequest[] = sentRequestsRes.map((r) => {
+        const initials = (r.displayName || "SR")
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase();
+        let hash = 0;
+        const nameStr = r.displayName || "";
+        for (let i = 0; i < nameStr.length; i++) {
+          hash = nameStr.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = Math.abs(hash % 360);
+
+        return {
+          id: String(r.userId),
+          name: r.displayName,
+          initials,
+          hue,
+          source: r.message || "Sent Request",
+          avatar: r.avatar || undefined,
+        };
+      });
+
       setFriends(mappedFriends);
       setRequests(mappedRequests);
+      setSentRequests(mappedSentRequests);
     } catch (err) {
       console.error("Failed to load contacts/requests:", err);
     }
@@ -129,5 +158,5 @@ export function useContacts(accountPhone?: string): UseContactsResult {
     }
   }, [accountPhone]);
 
-  return { friends, requests, grouped, query, setQuery, accept, decline };
+  return { friends, requests, sentRequests, grouped, query, setQuery, accept, decline };
 }
