@@ -145,7 +145,9 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         if (m.type === "image") kind = "image";
         else if (m.type === "video") kind = "video";
         else if (m.type === "file") kind = "file";
-        else if (m.type === "unknown") {
+        else if (m.type === "pin") {
+          kind = "event";
+        } else if (m.type === "unknown") {
           try {
             const rawObj = typeof m.raw === "string" ? JSON.parse(m.raw) : m.raw;
             if (rawObj && rawObj.isSystemPin) {
@@ -176,8 +178,17 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
   }, [botExternalId, activeId]);
 
   useEffect(() => {
+    if (activeId && botExternalId) {
+      api.get(`/bots/zalo/${botExternalId}/conversations/${activeId}`)
+        .then(() => {
+          void fetchConversations();
+        })
+        .catch((err) => {
+          console.error("Failed to fetch conversation details:", err);
+        });
+    }
     void fetchMessages();
-  }, [activeId, fetchMessages]);
+  }, [activeId, botExternalId, fetchMessages, fetchConversations]);
 
   useEffect(() => {
     if (!botExternalId || !activeId) return;
@@ -197,6 +208,11 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     if (!socket) return;
 
     const handleNewMessage = (data: any) => {
+      if (data.messageId && String(data.messageId).startsWith("group-update-")) {
+        void fetchConversations();
+        return;
+      }
+
       if (activeId && String(data.conversationId) === activeId) {
         let img: string | undefined = undefined;
         let fileName: string | undefined = undefined;
@@ -217,6 +233,8 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
             fileName = first.name || "Attachment";
             fileSize = first.size || "Unknown size";
           }
+        } else if (data.type === "pin") {
+          kind = "event";
         } else if (data.type === "unknown") {
           try {
             const rawObj = typeof data.raw === "string" ? JSON.parse(data.raw) : data.raw;

@@ -181,6 +181,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
   readonly onPinMessage: (messageExternalId: string) => Promise<void>;
   readonly onUnpinMessage: (topicId: string) => Promise<void>;
 }): JSX.Element {
+  void onUnpinMessage;
   const [draft, setDraft] = useState("");
   const [auto, setAuto] = useState(Boolean(convo?.auto));
   const [search, setSearch] = useState("");
@@ -329,15 +330,6 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
               </div>
               
               <div className="flex items-center gap-2 shrink-0 ml-2">
-                {pinned.length === 1 && (
-                  <button
-                    onClick={() => onUnpinMessage(pinned[0].id)}
-                    className="p-1 hover:bg-surface-3 rounded text-muted hover:text-danger transition-colors cursor-pointer"
-                    title={vi ? "Bỏ ghim" : "Unpin"}
-                  >
-                    <Icon name="x" size={13} />
-                  </button>
-                )}
               </div>
             </div>
 
@@ -352,13 +344,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
                       </span>
                       {item.params?.title || (vi ? "Bảng tin nhóm" : "Board note")}
                     </div>
-                    <button
-                      onClick={() => onUnpinMessage(item.id)}
-                      className="p-1 hover:bg-surface-3 rounded text-muted hover:text-danger transition-colors shrink-0 cursor-pointer"
-                      title={vi ? "Bỏ ghim" : "Unpin"}
-                    >
-                      <Icon name="x" size={13} />
-                    </button>
+
                   </div>
                 ))}
               </div>
@@ -371,26 +357,48 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
         <div className="mb-3.5 text-center"><span className="rounded-full bg-surface-2 px-3 py-1 text-[11px] text-muted">{vi ? "Hôm nay" : "Today"}</span></div>
         {shown.map((m, i) => {
           if (m.kind === "event") {
+            const text = m.text || "";
+            let prefix = text;
+            let boldPart = "";
+            const pinPatternVi = "đã ghim tin nhắn ";
+            const pinPatternEn = "pinned message ";
+            const unpinPatternVi = "đã bỏ ghim tin nhắn ";
+            const unpinPatternEn = "unpinned message ";
+
+            if (text.includes(unpinPatternVi)) {
+              const idx = text.indexOf(unpinPatternVi);
+              prefix = text.substring(0, idx + unpinPatternVi.length);
+              boldPart = text.substring(idx + unpinPatternVi.length);
+            } else if (text.includes(unpinPatternEn)) {
+              const idx = text.indexOf(unpinPatternEn);
+              prefix = text.substring(0, idx + unpinPatternEn.length);
+              boldPart = text.substring(idx + unpinPatternEn.length);
+            } else if (text.includes(pinPatternVi)) {
+              const idx = text.indexOf(pinPatternVi);
+              prefix = text.substring(0, idx + pinPatternVi.length);
+              boldPart = text.substring(idx + pinPatternVi.length);
+            } else if (text.includes(pinPatternEn)) {
+              const idx = text.indexOf(pinPatternEn);
+              prefix = text.substring(0, idx + pinPatternEn.length);
+              boldPart = text.substring(idx + pinPatternEn.length);
+            }
+
             return (
               <div key={m.id} className="flex items-center justify-center my-2 select-none animate-fade-in w-full">
-                <div className="inline-flex items-center bg-surface-1 border border-border/80 shadow-sm rounded-full py-1.5 px-4 text-[12px] text-muted max-w-[90%]">
+                <div 
+                  className="inline-flex items-center shadow-sm rounded-full py-1.5 px-4 text-[12px] max-w-[90%]"
+                  style={{
+                    backgroundColor: "var(--bubble-them-bg)",
+                    color: "var(--bubble-them-text)",
+                  }}
+                >
                   <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="mr-1.5 shrink-0 rotate-[45deg]">
                     <line x1="12" y1="17" x2="12" y2="22" />
                     <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.12-2.65A2 2 0 0 1 16 10.11V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v5.11a2 2 0 0 1-.44 1.24L5.44 14a2 2 0 0 0-.44 1.24z" />
                   </svg>
                   <span>
-                    {m.text}
-                    {" . "}
-                    <span 
-                      className="text-accent font-semibold cursor-pointer hover:underline"
-                      onClick={() => {
-                        const targetText = m.text ? m.text.replace(/.*ghim tin nhắn\s*"?|"?$/g, '') : "";
-                        setSearch(targetText);
-                        setSearchOn(true);
-                      }}
-                    >
-                      {vi ? "Xem" : "View"}
-                    </span>
+                    {prefix}
+                    {boldPart && <span className="font-bold">{boldPart}</span>}
                   </span>
                 </div>
               </div>
@@ -461,6 +469,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
 }
 
 function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin }: { readonly message: Message; readonly prev: Message | undefined; readonly vi: boolean; readonly highlight: string; readonly onReact: (messageExternalId: string, reactIcon: string) => Promise<void>; readonly onRecall: (messageExternalId: string) => Promise<void>; readonly onPin: (messageExternalId: string) => Promise<void> }): JSX.Element {
+  void onPin;
   const mine = message.from === "me" || message.from === "ai";
   const isAI = message.from === "ai";
   const showWho = message.who && (!prev || prev.who !== message.who);
@@ -509,10 +518,6 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin }: { re
     setContextMenu(null);
   };
 
-  const handlePinClick = () => {
-    void onPin(message.messageExternalId || "");
-    setContextMenu(null);
-  };
 
   return (
     <div className={`mt-2 flex flex-col ${mine ? "items-end" : "items-start"} animate-message group/bubble relative`}>
@@ -704,12 +709,7 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin }: { re
               </button>
             )}
 
-            <button onClick={handlePinClick} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
-              <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              <span>{vi ? "Ghim tin nhắn" : "Pin"}</span>
-            </button>
+
 
             <button onClick={() => setContextMenu(null)} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
               <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
