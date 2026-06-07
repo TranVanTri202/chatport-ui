@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { Account, Conversation, Message } from "@/types";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -35,7 +35,17 @@ export function ChatView({ initialAccountId, initialConvoId }: ChatViewProps): J
 
 function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { readonly account: Account; readonly accounts: ReadonlyArray<Account>; readonly vi: boolean; readonly onSwitch: (id: string) => void; readonly initialConvoId?: string }): JSX.Element {
   const { socket } = useAppContext();
-  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, reactToMessage, recallMessage, sendTypingStatus, pinMessage, unpinMessage } = useChat(account.convos, initialConvoId);
+  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, sendVoice, sendVideo, reactToMessage, recallMessage, sendTypingStatus, pinMessage, unpinMessage } = useChat(account.convos, initialConvoId);
+
+  const handleSendFile = useCallback((file: File) => {
+    if (file.type.startsWith("video/")) {
+      sendVideo(file);
+    } else if (file.type.startsWith("audio/")) {
+      sendVoice(file);
+    } else {
+      sendFile(file);
+    }
+  }, [sendFile, sendVoice, sendVideo]);
   const [filter, setFilter] = useState<"all" | "direct" | "group">("all");
   const [query, setQuery] = useState("");
   const [botMenu, setBotMenu] = useState(false);
@@ -143,7 +153,7 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
         </div>
       </div>
 
-      <ChatThread key={convo?.id ?? "empty"} convo={convo} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={sendFile} onReactToMessage={reactToMessage} onRecallMessage={recallMessage} onSendTypingStatus={sendTypingStatus} onPinMessage={pinMessage} onUnpinMessage={unpinMessage} />
+      <ChatThread key={convo?.id ?? "empty"} convo={convo} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={handleSendFile} onReactToMessage={reactToMessage} onRecallMessage={recallMessage} onSendTypingStatus={sendTypingStatus} onPinMessage={pinMessage} onUnpinMessage={unpinMessage} />
       {convo ? <ChatInfoPanel account={account} convo={convo} vi={vi} /> : <div className="border-l border-border bg-surface-0" />}
     </div>
   );
@@ -608,6 +618,32 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin }: { re
                       </div>
                       <Icon name="download" size={16} className="opacity-70" />
                     </div>
+                  ) : message.kind === "voice" ? (
+                    <div className="flex items-center gap-2 py-1">
+                      <audio src={message.voiceUrl} controls className="block max-w-full rounded-lg" style={{ height: '40px' }} />
+                    </div>
+                  ) : message.kind === "card" ? (
+                    <div className="flex flex-col gap-2 p-1 min-w-[200px]">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar spec={{ initials: (message.card?.title || "C").split(" ").map(n => n[0]).join(""), img: message.card?.thumb, hue: 200 }} size={36} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-bold text-text">{message.card?.title}</div>
+                          <div className="truncate text-[10px] text-muted">{vi ? "Gợi ý kết bạn" : "Suggested contact"}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : message.kind === "location" ? (
+                    <div className="flex flex-col gap-1.5 p-1 min-w-[200px]">
+                      <div className="flex items-center gap-2">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-accent/20 text-accent">
+                          <Icon name="addr" size={14} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-bold text-text">{message.location?.title || (vi ? "Vị trí chia sẻ" : "Shared Location")}</div>
+                          <div className="truncate text-[10px] text-muted">{message.location?.description}</div>
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <Highlighted text={message.text ?? ""} q={highlight} />
                   )}
@@ -626,6 +662,63 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin }: { re
                 <div className="text-[11px] opacity-70">{message.fileSize}</div>
               </div>
               <Icon name="download" size={16} className="opacity-70" />
+            </div>
+          ) : message.kind === "voice" ? (
+            <div className="flex items-center gap-2 py-1">
+              <audio src={message.voiceUrl} controls className="block max-w-full rounded-lg" style={{ height: '40px' }} />
+            </div>
+          ) : message.kind === "card" ? (
+            <div className="flex flex-col gap-2.5 p-1 min-w-[200px] max-w-[280px]">
+              <div className="flex items-center gap-3">
+                <Avatar spec={{ initials: (message.card?.title || "C").split(" ").map(n => n[0]).join(""), img: message.card?.thumb, hue: 200 }} size={44} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-bold text-text">{message.card?.title}</div>
+                  <div className="truncate text-[11px] text-muted">{vi ? "Gợi ý kết bạn" : "Suggested contact"}</div>
+                </div>
+              </div>
+              {message.card?.qrCodeUrl && (
+                <div className="relative group overflow-hidden rounded-lg border border-border bg-black/10 p-2.5 flex flex-col items-center justify-center gap-2">
+                  <img src={message.card.qrCodeUrl} alt="QR" className="w-28 h-28 object-contain rounded-md" />
+                  <span className="text-[10px] text-muted text-center select-none">{vi ? "Quét mã QR để kết bạn" : "Scan QR to add friend"}</span>
+                </div>
+              )}
+              {message.card?.userId && (
+                <div className="flex gap-2 mt-1">
+                  <a
+                    href={`https://zalo.me/${message.card.userId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 text-center bg-accent text-[#06140c] hover:bg-accent/90 text-xs font-semibold py-1.5 px-3 rounded-lg transition-colors select-none"
+                  >
+                    {vi ? "Nhắn tin" : "Message"}
+                  </a>
+                </div>
+              )}
+            </div>
+          ) : message.kind === "location" ? (
+            <div className="flex flex-col gap-2.5 p-1 min-w-[200px] max-w-[280px]">
+              <div className="flex items-start gap-2.5">
+                <span className="grid h-[36px] w-[36px] shrink-0 place-items-center rounded-lg bg-accent/20 text-accent">
+                  <Icon name="addr" size={18} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold text-text">{message.location?.title || (vi ? "Vị trí chia sẻ" : "Shared Location")}</div>
+                  <div className="text-[11.5px] opacity-80 leading-snug mt-0.5">{message.location?.description}</div>
+                </div>
+              </div>
+              {message.location?.url && (
+                <div className="flex gap-2 mt-1">
+                  <a
+                    href={message.location.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-accent text-[#06140c] hover:bg-accent/90 text-xs font-semibold py-1.5 px-3 rounded-lg transition-colors select-none"
+                  >
+                    <Icon name="link" size={13} />
+                    {vi ? "Xem trên Bản đồ" : "View on Map"}
+                  </a>
+                </div>
+              )}
             </div>
           ) : (
             <Highlighted text={message.text ?? ""} q={highlight} />

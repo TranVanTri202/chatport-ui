@@ -13,6 +13,8 @@ export interface UseChatResult {
   sendText: (text: string) => void;
   sendImage: (file: File, caption?: string) => void;
   sendFile: (file: File) => void;
+  sendVoice: (file: File) => void;
+  sendVideo: (file: File, caption?: string) => void;
   reactToMessage: (messageExternalId: string, reactIcon: string) => Promise<void>;
   recallMessage: (messageExternalId: string) => Promise<void>;
   sendTypingStatus: (isTyping: boolean) => void;
@@ -107,16 +109,66 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         let fileName: string | undefined = undefined;
         let fileSize: string | undefined = undefined;
         let videoUrl: string | undefined = undefined;
+        let voiceUrl: string | undefined = undefined;
 
+        let kind: MessageKind = "text";
+        if (m.type === "image") kind = "image";
+        else if (m.type === "video") kind = "video";
+        else if (m.type === "voice") kind = "voice";
+        else if (m.type === "file") kind = "file";
+        else if (m.type === "pin") {
+          kind = "event";
+        } else if (m.type === "unknown") {
+          try {
+            const rawObj = typeof m.raw === "string" ? JSON.parse(m.raw) : m.raw;
+            if (rawObj && (rawObj.isSystemPin || rawObj.isFriendEvent)) {
+              kind = "event";
+            }
+          } catch (e) {}
+        }
+
+        let card: any = undefined;
+        let location: any = undefined;
         if (m.attachments && m.attachments.length > 0) {
           const first = m.attachments[0];
-          if (m.type === "image") {
+          if (kind === "image" || first.type === "image") {
+            kind = "image";
             img = first.url;
-          } else if (m.type === "video") {
+          } else if (kind === "video" || first.type === "video") {
+            kind = "video";
             videoUrl = first.url;
-          } else if (m.type === "file") {
+          } else if (kind === "voice" || first.type === "voice") {
+            kind = "voice";
+            voiceUrl = first.url;
+          } else if (kind === "file" || first.type === "file") {
+            kind = "file";
             fileName = first.name || "Attachment";
-            fileSize = first.size || "Unknown size";
+            const bytes = Number(first.size);
+            if (!isNaN(bytes) && first.size !== null && first.size !== undefined) {
+              if (bytes < 1024) fileSize = `${bytes} B`;
+              else if (bytes < 1024 * 1024) fileSize = `${(bytes / 1024).toFixed(1)} KB`;
+              else fileSize = `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+            } else {
+              fileSize = first.size || "Unknown size";
+            }
+          } else if (first.type === "link" && first.meta && first.meta.isCard) {
+            kind = "card";
+            card = {
+              title: first.meta.title || "",
+              thumb: first.meta.thumb || "",
+              userId: first.meta.userId || "",
+              phone: first.meta.phone || "",
+              qrCodeUrl: first.meta.qrCodeUrl || "",
+            };
+          } else if (first.type === "link" && first.meta && first.meta.isLocation) {
+            kind = "location";
+            location = {
+              title: first.meta.title || "Vị trí",
+              description: first.meta.description || "",
+              latitude: first.meta.latitude || "",
+              longitude: first.meta.longitude || "",
+              url: first.url || "",
+            };
           }
         }
 
@@ -141,21 +193,6 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           }
         }
 
-        let kind: MessageKind = "text";
-        if (m.type === "image") kind = "image";
-        else if (m.type === "video") kind = "video";
-        else if (m.type === "file") kind = "file";
-        else if (m.type === "pin") {
-          kind = "event";
-        } else if (m.type === "unknown") {
-          try {
-            const rawObj = typeof m.raw === "string" ? JSON.parse(m.raw) : m.raw;
-            if (rawObj && (rawObj.isSystemPin || rawObj.isFriendEvent)) {
-              kind = "event";
-            }
-          } catch (e) {}
-        }
-
         return {
           id: String(m.id),
           messageExternalId: m.messageExternalId,
@@ -167,6 +204,9 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           fileName,
           fileSize,
           videoUrl,
+          voiceUrl,
+          card,
+          location,
           reactions,
           isRecalled,
           raw: m.raw,
@@ -219,22 +259,14 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         let fileName: string | undefined = undefined;
         let fileSize: string | undefined = undefined;
         let videoUrl: string | undefined = undefined;
+        let voiceUrl: string | undefined = undefined;
         let kind: MessageKind = "text";
 
-        if (data.attachments && data.attachments.length > 0) {
-          const first = data.attachments[0];
-          if (first.type === "image") {
-            kind = "image";
-            img = first.url;
-          } else if (first.type === "video") {
-            kind = "video";
-            videoUrl = first.url;
-          } else if (first.type === "file") {
-            kind = "file";
-            fileName = first.name || "Attachment";
-            fileSize = first.size || "Unknown size";
-          }
-        } else if (data.type === "pin") {
+        if (data.type === "image") kind = "image";
+        else if (data.type === "video") kind = "video";
+        else if (data.type === "voice") kind = "voice";
+        else if (data.type === "file") kind = "file";
+        else if (data.type === "pin") {
           kind = "event";
         } else if (data.type === "unknown") {
           try {
@@ -243,6 +275,51 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
               kind = "event";
             }
           } catch (e) {}
+        }
+
+        let card: any = undefined;
+        let location: any = undefined;
+        if (data.attachments && data.attachments.length > 0) {
+          const first = data.attachments[0];
+          if (kind === "image" || first.type === "image") {
+            kind = "image";
+            img = first.url;
+          } else if (kind === "video" || first.type === "video") {
+            kind = "video";
+            videoUrl = first.url;
+          } else if (kind === "voice" || first.type === "voice") {
+            kind = "voice";
+            voiceUrl = first.url;
+          } else if (kind === "file" || first.type === "file") {
+            kind = "file";
+            fileName = first.name || "Attachment";
+            const bytes = Number(first.size);
+            if (!isNaN(bytes) && first.size !== null && first.size !== undefined) {
+              if (bytes < 1024) fileSize = `${bytes} B`;
+              else if (bytes < 1024 * 1024) fileSize = `${(bytes / 1024).toFixed(1)} KB`;
+              else fileSize = `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+            } else {
+              fileSize = first.size || "Unknown size";
+            }
+          } else if (first.type === "link" && first.meta && first.meta.isCard) {
+            kind = "card";
+            card = {
+              title: first.meta.title || "",
+              thumb: first.meta.thumb || "",
+              userId: first.meta.userId || "",
+              phone: first.meta.phone || "",
+              qrCodeUrl: first.meta.qrCodeUrl || "",
+            };
+          } else if (first.type === "link" && first.meta && first.meta.isLocation) {
+            kind = "location";
+            location = {
+              title: first.meta.title || "Vị trí",
+              description: first.meta.description || "",
+              latitude: first.meta.latitude || "",
+              longitude: first.meta.longitude || "",
+              url: first.url || "",
+            };
+          }
         }
 
         const newMsg: Message = {
@@ -256,6 +333,9 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           fileName,
           fileSize,
           videoUrl,
+          voiceUrl,
+          card,
+          location,
           reactions: [],
           raw: data.raw,
         };
@@ -346,8 +426,55 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
   }, [botExternalId, active]);
 
   const sendFile = useCallback(async (file: File) => {
-    console.warn("File sending not fully implemented in backend yet", file);
-  }, []);
+    if (!botExternalId || !active) return;
+
+    try {
+      const formData = new FormData();
+      formData.append("botExternalId", botExternalId);
+      formData.append("threadId", active.phone || "");
+      formData.append("threadType", active.type === "group" ? "group" : "user");
+      formData.append("file", file);
+
+      await api.post("/messages/send/file", formData);
+    } catch (error) {
+      console.error("Failed to send file:", error);
+    }
+  }, [botExternalId, active]);
+
+  const sendVoice = useCallback(async (file: File) => {
+    if (!botExternalId || !active) return;
+
+    try {
+      const formData = new FormData();
+      formData.append("botExternalId", botExternalId);
+      formData.append("threadId", active.phone || "");
+      formData.append("threadType", active.type === "group" ? "group" : "user");
+      formData.append("file", file);
+
+      await api.post("/messages/send/voice", formData);
+    } catch (error) {
+      console.error("Failed to send voice:", error);
+    }
+  }, [botExternalId, active]);
+
+  const sendVideo = useCallback(async (file: File, caption?: string) => {
+    if (!botExternalId || !active) return;
+
+    try {
+      const formData = new FormData();
+      formData.append("botExternalId", botExternalId);
+      formData.append("threadId", active.phone || "");
+      formData.append("threadType", active.type === "group" ? "group" : "user");
+      formData.append("file", file);
+      if (caption?.trim()) {
+        formData.append("caption", caption.trim());
+      }
+
+      await api.post("/messages/send/video", formData);
+    } catch (error) {
+      console.error("Failed to send video:", error);
+    }
+  }, [botExternalId, active]);
 
   const reactToMessage = useCallback(async (messageExternalId: string, reactIcon: string) => {
     if (!botExternalId || !active) return;
@@ -435,6 +562,8 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     sendText,
     sendImage,
     sendFile,
+    sendVoice,
+    sendVideo,
     reactToMessage,
     recallMessage,
     sendTypingStatus,

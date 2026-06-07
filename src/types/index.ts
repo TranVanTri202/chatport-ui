@@ -62,7 +62,7 @@ export interface Conversation {
 }
 
 export type MessageSender = "them" | "me" | "ai";
-export type MessageKind = "text" | "image" | "file" | "video" | "event";
+export type MessageKind = "text" | "image" | "file" | "video" | "voice" | "event" | "card" | "location";
 
 export interface MessageReaction {
   readonly userId: string;
@@ -83,6 +83,21 @@ export interface Message {
   readonly fileName?: string;
   readonly fileSize?: string;
   readonly videoUrl?: string;
+  readonly voiceUrl?: string;
+  readonly card?: {
+    readonly title: string;
+    readonly thumb: string;
+    readonly userId: string;
+    readonly phone?: string;
+    readonly qrCodeUrl?: string;
+  };
+  readonly location?: {
+    readonly title: string;
+    readonly description: string;
+    readonly latitude: string;
+    readonly longitude: string;
+    readonly url: string;
+  };
   readonly reactions?: ReadonlyArray<MessageReaction>;
   readonly isRecalled?: boolean;
   readonly raw?: any;
