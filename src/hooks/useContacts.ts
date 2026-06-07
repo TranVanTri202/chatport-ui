@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Friend, FriendRequest } from "@/types";
 import { api } from "@/lib/api";
+import { useAppContext } from "@/providers/AppProvider";
 
 export interface UseContactsResult {
   readonly friends: ReadonlyArray<Friend>;
@@ -17,6 +18,7 @@ export interface UseContactsResult {
 
 /** Logic for the contacts screen: filtering, alphabetical grouping, accept/decline. */
 export function useContacts(accountPhone?: string): UseContactsResult {
+  const { socket } = useAppContext();
   const [friends, setFriends] = useState<ReadonlyArray<Friend>>([]);
   const [requests, setRequests] = useState<ReadonlyArray<FriendRequest>>([]);
   const [sentRequests, setSentRequests] = useState<ReadonlyArray<FriendRequest>>([]);
@@ -120,6 +122,19 @@ export function useContacts(accountPhone?: string): UseContactsResult {
     void loadContacts();
     setQuery("");
   }, [loadContacts]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleContactsUpdated = () => {
+      void loadContacts();
+    };
+
+    socket.on("contacts:updated", handleContactsUpdated);
+    return () => {
+      socket.off("contacts:updated", handleContactsUpdated);
+    };
+  }, [socket, loadContacts]);
 
   const grouped = useMemo<ReadonlyArray<readonly [string, ReadonlyArray<Friend>]>>(() => {
     const q = query.trim().toLowerCase();
