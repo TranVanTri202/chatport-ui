@@ -11,6 +11,7 @@ export interface UseContactsResult {
   readonly query: string;
   accept: (req: FriendRequest) => void;
   decline: (req: FriendRequest) => void;
+  cancelSent: (req: FriendRequest) => void;
 }
 
 /** Logic for the contacts screen: filtering, alphabetical grouping, accept/decline. */
@@ -158,5 +159,15 @@ export function useContacts(accountPhone?: string): UseContactsResult {
     }
   }, [accountPhone]);
 
-  return { friends, requests, sentRequests, grouped, query, setQuery, accept, decline };
+  const cancelSent = useCallback(async (req: FriendRequest) => {
+    if (!accountPhone) return;
+    try {
+      await api.post(`/bots/zalo/${accountPhone}/contacts/sent-requests/${req.id}/cancel`);
+      setSentRequests((prev) => prev.filter((r) => r.id !== req.id));
+    } catch (e) {
+      console.error("Failed to cancel sent request:", e);
+    }
+  }, [accountPhone]);
+
+  return { friends, requests, sentRequests, grouped, query, setQuery, accept, decline, cancelSent };
 }

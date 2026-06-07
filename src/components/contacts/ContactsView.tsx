@@ -17,7 +17,7 @@ export function ContactsView(): JSX.Element {
   const vi = preferences.lang === "vi";
   const [selected, setSelected] = useState(accounts[0]?.id ?? "");
   const account = accounts.find((a) => a.id === selected) ?? accounts[0];
-  const { grouped, requests, sentRequests, friends, query, setQuery, accept, decline } = useContacts(account?.phone);
+  const { grouped, requests, sentRequests, friends, query, setQuery, accept, decline, cancelSent } = useContacts(account?.phone);
   const [tab, setTab] = useState<"friends" | "requests" | "sent-requests">("friends");
   const [addModal, setAddModal] = useState(false);
   const handleStartChat = async (friend: any) => {
@@ -133,7 +133,8 @@ export function ContactsView(): JSX.Element {
                         <div className="text-sm font-semibold">{r.name}</div>
                         <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted"><Icon name="userPlus" size={12} /> {vi ? "Lời nhắn" : "Greeting"} · {r.source}</div>
                       </div>
-                      <span className="text-xs text-muted font-medium italic">{vi ? "Đang chờ phản hồi" : "Pending response"}</span>
+                      <span className="text-xs text-muted font-medium italic mr-2">{vi ? "Đang chờ phản hồi" : "Pending response"}</span>
+                      <Button size="sm" variant="ghost" onClick={() => cancelSent(r)}>{vi ? "Thu hồi" : "Revoke"}</Button>
                     </div>
                   ))}
                 </div>
