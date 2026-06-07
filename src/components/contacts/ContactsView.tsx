@@ -20,6 +20,7 @@ export function ContactsView(): JSX.Element {
   const { grouped, requests, sentRequests, friends, query, setQuery, accept, decline, cancelSent, remove } = useContacts(account?.phone);
   const [tab, setTab] = useState<"friends" | "requests" | "sent-requests">("friends");
   const [addModal, setAddModal] = useState(false);
+  const [unfriendTarget, setUnfriendTarget] = useState<any | null>(null);
   const handleStartChat = async (friend: any) => {
     if (!account) return;
     try {
@@ -107,9 +108,7 @@ export function ContactsView(): JSX.Element {
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-danger hover:text-danger hover:bg-danger/10"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm(vi ? `Bạn có chắc chắn muốn huỷ kết bạn với ${f.name}?` : `Are you sure you want to remove ${f.name} from friends?`)) {
-                            remove(f);
-                          }
+                          setUnfriendTarget(f);
                         }}
                       />
                     </div>
@@ -158,6 +157,38 @@ export function ContactsView(): JSX.Element {
         {addModal && account ? (
           <Modal title={vi ? "Tìm kiếm & Thêm bạn bè" : "Search & Add Friends"} onClose={() => setAddModal(false)} width={380}>
             <SearchPhoneModal accountPhone={account.phone} onClose={() => setAddModal(false)} vi={vi} />
+          </Modal>
+        ) : null}
+        {unfriendTarget ? (
+          <Modal 
+            title={vi ? "Xác nhận hủy kết bạn" : "Confirm Unfriend"} 
+            onClose={() => setUnfriendTarget(null)} 
+            width={380}
+          >
+            <div className="flex flex-col gap-4">
+              <div className="text-sm text-muted">
+                {vi 
+                  ? `Bạn có chắc chắn muốn hủy kết bạn với ${unfriendTarget.name}? Hành động này không thể hoàn tác.`
+                  : `Are you sure you want to remove ${unfriendTarget.name} from your friends list? This action cannot be undone.`}
+              </div>
+              <div className="flex justify-end gap-2.5">
+                <Button 
+                  variant="ghost" 
+                  onClick={() => setUnfriendTarget(null)}
+                >
+                  {vi ? "Hủy" : "Cancel"}
+                </Button>
+                <Button 
+                  variant="danger" 
+                  onClick={async () => {
+                    await remove(unfriendTarget);
+                    setUnfriendTarget(null);
+                  }}
+                >
+                  {vi ? "Đồng ý" : "Confirm"}
+                </Button>
+              </div>
+            </div>
           </Modal>
         ) : null}
       </section>
