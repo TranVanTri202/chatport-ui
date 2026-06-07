@@ -150,7 +150,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         } else if (m.type === "unknown") {
           try {
             const rawObj = typeof m.raw === "string" ? JSON.parse(m.raw) : m.raw;
-            if (rawObj && rawObj.isSystemPin) {
+            if (rawObj && (rawObj.isSystemPin || rawObj.isFriendEvent)) {
               kind = "event";
             }
           } catch (e) {}
@@ -169,6 +169,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           videoUrl,
           reactions,
           isRecalled,
+          raw: m.raw,
         };
       });
       setMessages(mappedMsgs.reverse());
@@ -238,7 +239,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         } else if (data.type === "unknown") {
           try {
             const rawObj = typeof data.raw === "string" ? JSON.parse(data.raw) : data.raw;
-            if (rawObj && rawObj.isSystemPin) {
+            if (rawObj && (rawObj.isSystemPin || rawObj.isFriendEvent)) {
               kind = "event";
             }
           } catch (e) {}
@@ -256,6 +257,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           fileSize,
           videoUrl,
           reactions: [],
+          raw: data.raw,
         };
         setMessages((prev) => {
           if (prev.some((m) => m.id === newMsg.id)) return prev;

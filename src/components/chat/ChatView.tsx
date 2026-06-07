@@ -383,6 +383,13 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
               boldPart = text.substring(idx + pinPatternEn.length);
             }
 
+            const rawObj = typeof m.raw === "string" ? (() => { try { return JSON.parse(m.raw); } catch { return null; } })() : m.raw;
+            const isFriendEvent = !!(rawObj && rawObj.isFriendEvent);
+            const eventType = rawObj?.eventType;
+            const iconColor = isFriendEvent
+              ? (eventType === "add" || eventType === "unblock" ? "#10b981" : "#ef4444")
+              : "#f97316";
+
             return (
               <div key={m.id} className="flex items-center justify-center my-2 select-none animate-fade-in w-full">
                 <div 
@@ -392,10 +399,14 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
                     color: "var(--bubble-them-text)",
                   }}
                 >
-                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="mr-1.5 shrink-0 rotate-[45deg]">
-                    <line x1="12" y1="17" x2="12" y2="22" />
-                    <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.12-2.65A2 2 0 0 1 16 10.11V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v5.11a2 2 0 0 1-.44 1.24L5.44 14a2 2 0 0 0-.44 1.24z" />
-                  </svg>
+                  {isFriendEvent ? (
+                    <Icon name="users" size={13} style={{ color: iconColor }} className="mr-1.5 shrink-0" />
+                  ) : (
+                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="mr-1.5 shrink-0 rotate-[45deg]">
+                      <line x1="12" y1="17" x2="12" y2="22" />
+                      <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.12-2.65A2 2 0 0 1 16 10.11V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v5.11a2 2 0 0 1-.44 1.24L5.44 14a2 2 0 0 0-.44 1.24z" />
+                    </svg>
+                  )}
                   <span>
                     {prefix}
                     {boldPart && <span className="font-bold">{boldPart}</span>}
