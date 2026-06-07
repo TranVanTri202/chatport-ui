@@ -12,6 +12,7 @@ export interface UseContactsResult {
   accept: (req: FriendRequest) => void;
   decline: (req: FriendRequest) => void;
   cancelSent: (req: FriendRequest) => void;
+  remove: (friend: Friend) => void;
 }
 
 /** Logic for the contacts screen: filtering, alphabetical grouping, accept/decline. */
@@ -169,5 +170,15 @@ export function useContacts(accountPhone?: string): UseContactsResult {
     }
   }, [accountPhone]);
 
-  return { friends, requests, sentRequests, grouped, query, setQuery, accept, decline, cancelSent };
+  const remove = useCallback(async (friend: Friend) => {
+    if (!accountPhone) return;
+    try {
+      await api.delete(`/bots/zalo/${accountPhone}/contacts/${friend.id}`);
+      setFriends((prev) => prev.filter((f) => f.id !== friend.id));
+    } catch (e) {
+      console.error("Failed to remove friend:", e);
+    }
+  }, [accountPhone]);
+
+  return { friends, requests, sentRequests, grouped, query, setQuery, accept, decline, cancelSent, remove };
 }

@@ -17,7 +17,7 @@ export function ContactsView(): JSX.Element {
   const vi = preferences.lang === "vi";
   const [selected, setSelected] = useState(accounts[0]?.id ?? "");
   const account = accounts.find((a) => a.id === selected) ?? accounts[0];
-  const { grouped, requests, sentRequests, friends, query, setQuery, accept, decline, cancelSent } = useContacts(account?.phone);
+  const { grouped, requests, sentRequests, friends, query, setQuery, accept, decline, cancelSent, remove } = useContacts(account?.phone);
   const [tab, setTab] = useState<"friends" | "requests" | "sent-requests">("friends");
   const [addModal, setAddModal] = useState(false);
   const handleStartChat = async (friend: any) => {
@@ -89,17 +89,30 @@ export function ContactsView(): JSX.Element {
                 <div key={letter}>
                   <div className="p-[16px_6px_6px] text-xs font-bold tracking-wide text-accent">{letter}</div>
                   {list.map((f, i) => (
-                    <button
+                    <div
                       key={`${f.name}-${i}`}
-                      onClick={() => handleStartChat(f)}
-                      className="flex w-full items-center gap-3 rounded-xl p-[10px_12px] text-left hover:bg-surface-2 transition-colors cursor-pointer"
+                      className="flex w-full items-center gap-3 rounded-xl p-[10px_12px] text-left hover:bg-surface-2 transition-colors group"
                     >
-                      <Avatar spec={{ hue: f.hue, initials: f.initials, img: f.avatar }} size={42} status={f.online ? "online" : "offline"} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13.5px] font-semibold">{f.name}</div>
-                        <div className="truncate text-xs text-muted">{f.nick ? `~ ${f.nick}` : vi ? "Bạn bè" : "Friend"}{f.phone ? ` · ${f.phone}` : ""}</div>
+                      <div className="flex-1 flex items-center gap-3 cursor-pointer min-w-0" onClick={() => handleStartChat(f)}>
+                        <Avatar spec={{ hue: f.hue, initials: f.initials, img: f.avatar }} size={42} status={f.online ? "online" : "offline"} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[13.5px] font-semibold">{f.name}</div>
+                          <div className="truncate text-xs text-muted">{f.nick ? `~ ${f.nick}` : vi ? "Bạn bè" : "Friend"}{f.phone ? ` · ${f.phone}` : ""}</div>
+                        </div>
                       </div>
-                    </button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon="trash"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-danger hover:text-danger hover:bg-danger/10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(vi ? `Bạn có chắc chắn muốn huỷ kết bạn với ${f.name}?` : `Are you sure you want to remove ${f.name} from friends?`)) {
+                            remove(f);
+                          }
+                        }}
+                      />
+                    </div>
                   ))}
                 </div>
               ))
