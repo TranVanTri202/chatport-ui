@@ -52,7 +52,7 @@ function DirectHeader({ convo, vi }: { readonly convo: Conversation; readonly vi
         <div className="text-center">
           <div className="text-[15.5px] font-semibold">{convo.name}</div>
           {convo.nick ? <div className="mt-0.5 text-[12.5px] text-muted">~ {convo.nick}</div> : null}
-          <div className="mt-1 text-xs text-muted">{convo.online ? (vi ? "Đang hoạt động" : "Online") : vi ? "Ngoại tuyến" : "Offline"}</div>
+          <div className="mt-1 text-xs text-muted">{convo.online ? (vi ? "Đang hoạt động" : "Online") : (convo.presenceText ?? (vi ? "Ngoại tuyến" : "Offline"))}</div>
         </div>
         {fs === "friend" ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-dim px-3 py-1.5 text-[12.5px] font-semibold text-accent"><Icon name="userCheck" size={14} /> {vi ? "Bạn bè" : "Friends"}</span>

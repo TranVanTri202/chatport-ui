@@ -50,6 +50,8 @@ export interface Conversation {
   readonly auto: boolean;
   readonly thread: string | null;
   readonly online?: boolean;
+  /** Human-friendly presence string, e.g. "5 phút trước" or "Đang hoạt động". */
+  readonly presenceText?: string;
   readonly members?: number;
   readonly phone?: string;
   readonly nick?: string;
@@ -60,7 +62,7 @@ export interface Conversation {
 }
 
 export type MessageSender = "them" | "me" | "ai";
-export type MessageKind = "text" | "image" | "file" | "video";
+export type MessageKind = "text" | "image" | "file" | "video" | "event";
 
 export interface MessageReaction {
   readonly userId: string;

@@ -6,6 +6,7 @@ import type { Account, Conversation, Message } from "@/types";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useChat } from "@/hooks/useChat";
 import { usePreferences } from "@/hooks/usePreferences";
+import { useAppContext } from "@/providers/AppProvider";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -33,20 +34,63 @@ export function ChatView({ initialAccountId, initialConvoId }: ChatViewProps): J
 }
 
 function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { readonly account: Account; readonly accounts: ReadonlyArray<Account>; readonly vi: boolean; readonly onSwitch: (id: string) => void; readonly initialConvoId?: string }): JSX.Element {
+  const { socket } = useAppContext();
   const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, reactToMessage, recallMessage, sendTypingStatus, pinMessage, unpinMessage } = useChat(account.convos, initialConvoId);
   const [filter, setFilter] = useState<"all" | "direct" | "group">("all");
   const [query, setQuery] = useState("");
   const [botMenu, setBotMenu] = useState(false);
+  const [presenceByConvoId, setPresenceByConvoId] = useState<Record<string, { readonly online: boolean; readonly presenceText?: string }>>({});
+  const pendingPresenceRef = useRef<Set<string>>(new Set());
   const expired = account.status === "expired";
 
   const filtered = useMemo(
-    () => conversations.filter((c) => {
+    () => conversations.map((c) => ({ ...c, ...presenceByConvoId[c.id] })).filter((c) => {
       const okType = filter === "all" || c.type === filter;
       const q = query.trim().toLowerCase();
       return okType && (!q || `${c.name} ${c.last}`.toLowerCase().includes(q));
     }),
-    [conversations, filter, query],
+    [conversations, filter, query, presenceByConvoId],
   );
+
+  const convo = useMemo(() => filtered.find((c) => c.id === active?.id), [filtered, active]);
+
+  useEffect(() => {
+    if (!socket || !active || active.type !== "direct" || !active.phone) return;
+
+    const convoId = active.id;
+    if (pendingPresenceRef.current.has(convoId)) return;
+
+    pendingPresenceRef.current.add(convoId);
+    socket.emit("user:lastOnline:request", {
+      botExternalId: account.phone,
+      convoId,
+      uid: active.phone,
+    });
+  }, [socket, active, account.phone]);
+
+  useEffect(() => {
+    if (!socket) return undefined;
+
+    const handlePresence = (payload: { readonly convoId?: string; readonly uid?: string; readonly online?: boolean; readonly lastOnline?: number; readonly presenceText?: string }) => {
+      const convoId = payload.convoId ?? filtered.find((c) => c.phone === payload.uid)?.id;
+      if (!convoId) return;
+
+      pendingPresenceRef.current.delete(convoId);
+      const presenceText = payload.online ? undefined : payload.presenceText ?? (payload.lastOnline ? "Ngoại tuyến" : undefined);
+      setPresenceByConvoId((prev) => ({
+        ...prev,
+        [convoId]: {
+          online: Boolean(payload.online),
+          presenceText,
+        },
+      }));
+    };
+
+    socket.on("user:lastOnline:response", handlePresence);
+    return () => {
+      socket.off("user:lastOnline:response", handlePresence);
+    };
+  }, [socket, filtered]);
 
   return (
     <div className="grid h-full overflow-hidden [grid-template-columns:320px_1fr_290px]">
@@ -99,8 +143,8 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
         </div>
       </div>
 
-      <ChatThread key={active?.id ?? "empty"} convo={active} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={sendFile} onReactToMessage={reactToMessage} onRecallMessage={recallMessage} onSendTypingStatus={sendTypingStatus} onPinMessage={pinMessage} onUnpinMessage={unpinMessage} />
-      {active ? <ChatInfoPanel account={account} convo={active} vi={vi} /> : <div className="border-l border-border bg-surface-0" />}
+      <ChatThread key={convo?.id ?? "empty"} convo={convo} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={sendFile} onReactToMessage={reactToMessage} onRecallMessage={recallMessage} onSendTypingStatus={sendTypingStatus} onPinMessage={pinMessage} onUnpinMessage={unpinMessage} />
+      {convo ? <ChatInfoPanel account={account} convo={convo} vi={vi} /> : <div className="border-l border-border bg-surface-0" />}
     </div>
   );
 }
@@ -225,7 +269,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
         <Avatar spec={{ hue: convo.hue, initials: convo.initials, img: convo.avatarImg }} size={38} status={convo.type === "direct" ? (convo.online ? "online" : "offline") : undefined} />
         <div className="min-w-0 flex-1">
           <div className="text-[14.5px] font-semibold">{convo.name}</div>
-          <div className="text-[11.5px] text-muted">{convo.type === "group" ? `${convo.members} ${vi ? "thành viên" : "members"}` : convo.online ? (vi ? "Đang hoạt động" : "Online") : (vi ? "Ngoại tuyến" : "Offline")}</div>
+          <div className="text-[11.5px] text-muted">{convo.type === "group" ? `${convo.members} ${vi ? "thành viên" : "members"}` : convo.online ? (vi ? "Đang hoạt động" : "Online") : (convo.presenceText ?? (vi ? "Ngoại tuyến" : "Offline"))}</div>
         </div>
         <div className="flex items-center gap-2.5 rounded-[9px] border border-border p-[6px_11px]" style={{ background: auto && !expired ? "var(--accent-dim)" : "var(--surface-3)", opacity: expired ? 0.5 : 1, pointerEvents: expired ? "none" : "auto" }}>
           <Icon name="bot" size={15} className={auto && !expired ? "text-accent" : "text-muted"} />
@@ -325,18 +369,47 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
 
       <div ref={scrollRef} className="flex flex-1 flex-col gap-1 overflow-y-auto p-[22px_24px] no-scrollbar">
         <div className="mb-3.5 text-center"><span className="rounded-full bg-surface-2 px-3 py-1 text-[11px] text-muted">{vi ? "Hôm nay" : "Today"}</span></div>
-        {shown.map((m, i) => (
-          <Bubble
-            key={m.id}
-            message={m}
-            prev={shown[i - 1]}
-            vi={vi}
-            highlight={searchOn ? search.trim() : ""}
-            onReact={onReactToMessage}
-            onRecall={onRecallMessage}
-            onPin={onPinMessage}
-          />
-        ))}
+        {shown.map((m, i) => {
+          if (m.kind === "event") {
+            return (
+              <div key={m.id} className="flex items-center justify-center my-2 select-none animate-fade-in w-full">
+                <div className="inline-flex items-center bg-surface-1 border border-border/80 shadow-sm rounded-full py-1.5 px-4 text-[12px] text-muted max-w-[90%]">
+                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="mr-1.5 shrink-0 rotate-[45deg]">
+                    <line x1="12" y1="17" x2="12" y2="22" />
+                    <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.12-2.65A2 2 0 0 1 16 10.11V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v5.11a2 2 0 0 1-.44 1.24L5.44 14a2 2 0 0 0-.44 1.24z" />
+                  </svg>
+                  <span>
+                    {m.text}
+                    {" . "}
+                    <span 
+                      className="text-accent font-semibold cursor-pointer hover:underline"
+                      onClick={() => {
+                        const targetText = m.text ? m.text.replace(/.*ghim tin nhắn\s*"?|"?$/g, '') : "";
+                        setSearch(targetText);
+                        setSearchOn(true);
+                      }}
+                    >
+                      {vi ? "Xem" : "View"}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <Bubble
+              key={m.id}
+              message={m}
+              prev={shown[i - 1]}
+              vi={vi}
+              highlight={searchOn ? search.trim() : ""}
+              onReact={onReactToMessage}
+              onRecall={onRecallMessage}
+              onPin={onPinMessage}
+            />
+          );
+        })}
       </div>
 
       {expired ? (
@@ -409,27 +482,8 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin }: { re
   };
 
   const fallbackCopyText = (text: string) => {
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.top = "0";
-    textArea.style.left = "0";
-    textArea.style.width = "2em";
-    textArea.style.height = "2em";
-    textArea.style.padding = "0";
-    textArea.style.border = "none";
-    textArea.style.outline = "none";
-    textArea.style.boxShadow = "none";
-    textArea.style.background = "transparent";
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    try {
-      document.execCommand("copy");
-    } catch (err) {
-      console.error("Fallback copy failed:", err);
-    }
-    document.body.removeChild(textArea);
+    void text;
+    console.warn("Clipboard API unavailable in this browser context.");
   };
 
   const handleCopy = () => {

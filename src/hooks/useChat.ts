@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Conversation, Message } from "@/types";
+import type { Conversation, Message, MessageKind } from "@/types";
 import { api } from "@/lib/api";
 import { useAppContext } from "@/providers/AppProvider";
 
@@ -141,11 +141,24 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           }
         }
 
+        let kind: MessageKind = "text";
+        if (m.type === "image") kind = "image";
+        else if (m.type === "video") kind = "video";
+        else if (m.type === "file") kind = "file";
+        else if (m.type === "unknown") {
+          try {
+            const rawObj = typeof m.raw === "string" ? JSON.parse(m.raw) : m.raw;
+            if (rawObj && rawObj.isSystemPin) {
+              kind = "event";
+            }
+          } catch (e) {}
+        }
+
         return {
           id: String(m.id),
           messageExternalId: m.messageExternalId,
           from: m.direction === "in" ? "them" : (m.senderExternalId === botExternalId ? "me" : "ai"),
-          kind: m.type === "image" ? "image" : m.type === "video" ? "video" : m.type === "file" ? "file" : "text",
+          kind,
           time: formatTime(m.createdAt),
           text: m.text || undefined,
           img,
@@ -189,7 +202,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         let fileName: string | undefined = undefined;
         let fileSize: string | undefined = undefined;
         let videoUrl: string | undefined = undefined;
-        let kind: "text" | "image" | "file" | "video" = "text";
+        let kind: MessageKind = "text";
 
         if (data.attachments && data.attachments.length > 0) {
           const first = data.attachments[0];
@@ -204,6 +217,13 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
             fileName = first.name || "Attachment";
             fileSize = first.size || "Unknown size";
           }
+        } else if (data.type === "unknown") {
+          try {
+            const rawObj = typeof data.raw === "string" ? JSON.parse(data.raw) : data.raw;
+            if (rawObj && rawObj.isSystemPin) {
+              kind = "event";
+            }
+          } catch (e) {}
         }
 
         const newMsg: Message = {
