@@ -14,6 +14,9 @@ export interface UseContactsResult {
   decline: (req: FriendRequest) => void;
   cancelSent: (req: FriendRequest) => void;
   remove: (friend: Friend) => void;
+  sendRequest: (userId: string, message?: string) => Promise<void>;
+  changeAlias: (friendId: string, alias: string) => Promise<void>;
+  removeAlias: (friendId: string) => Promise<void>;
 }
 
 /** Logic for the contacts screen: filtering, alphabetical grouping, accept/decline. */
@@ -51,7 +54,7 @@ export function useContacts(accountPhone?: string): UseContactsResult {
         const hue = Math.abs(hash % 360);
 
         return {
-          id: String(c.id),
+          id: c.externalId,
           name: c.name,
           initials,
           hue,
@@ -59,6 +62,11 @@ export function useContacts(accountPhone?: string): UseContactsResult {
           nick: c.nickName || undefined,
           phone: c.phone || undefined,
           avatar: c.avatar || undefined,
+          cover: c.cover || undefined,
+          gender: c.gender ?? undefined,
+          dob: c.dob || undefined,
+          signature: c.signature || undefined,
+          zaloName: c.zaloName || undefined,
         };
       });
 
@@ -78,6 +86,7 @@ export function useContacts(accountPhone?: string): UseContactsResult {
 
         return {
           id: String(r.id),
+          externalId: r.externalId,
           name: r.name,
           initials,
           hue,
@@ -154,11 +163,11 @@ export function useContacts(accountPhone?: string): UseContactsResult {
   const accept = useCallback(async (req: FriendRequest) => {
     if (!accountPhone) return;
     try {
-      await api.post(`/bots/zalo/${accountPhone}/contacts/requests/${req.id}/accept`);
+      const newContact = await api.post<any>(`/bots/zalo/${accountPhone}/contacts/requests/${req.id}/accept`);
       setRequests((prev) => prev.filter((r) => r.id !== req.id));
       setFriends((prev) => [
         ...prev,
-        { id: req.id, name: req.name, initials: req.initials, hue: req.hue, online: false },
+        { id: newContact.externalId, name: req.name, initials: req.initials, hue: req.hue, online: false, avatar: req.avatar },
       ]);
     } catch (e) {
       console.error("Failed to accept request:", e);
@@ -195,5 +204,41 @@ export function useContacts(accountPhone?: string): UseContactsResult {
     }
   }, [accountPhone]);
 
-  return { friends, requests, sentRequests, grouped, query, setQuery, accept, decline, cancelSent, remove };
+  const sendRequest = useCallback(async (userId: string, message?: string) => {
+    if (!accountPhone) return;
+    try {
+      await api.post(`/bots/zalo/${accountPhone}/contacts/add-friend`, { userId, message });
+      void loadContacts();
+    } catch (e) {
+      console.error("Failed to send friend request:", e);
+    }
+  }, [accountPhone, loadContacts]);
+
+  const changeAlias = useCallback(async (friendId: string, alias: string) => {
+    if (!accountPhone) return;
+    try {
+      await api.patch(`/bots/zalo/${accountPhone}/contacts/${friendId}/alias`, { alias });
+      // Cập nhật tên trong local state ngay lập tức
+      setFriends((prev) =>
+        prev.map((f) => f.id === friendId ? { ...f, name: alias } : f)
+      );
+    } catch (e) {
+      console.error("Failed to change friend alias:", e);
+    }
+  }, [accountPhone]);
+
+  const removeAlias = useCallback(async (friendId: string) => {
+    if (!accountPhone) return;
+    try {
+      const res = await api.delete<{ ok: boolean; name: string }>(`/bots/zalo/${accountPhone}/contacts/${friendId}/alias`);
+      // Khôi phục tên gốc trong local state
+      setFriends((prev) =>
+        prev.map((f) => f.id === friendId ? { ...f, name: res.name ?? f.name } : f)
+      );
+    } catch (e) {
+      console.error("Failed to remove friend alias:", e);
+    }
+  }, [accountPhone]);
+
+  return { friends, requests, sentRequests, grouped, query, setQuery, accept, decline, cancelSent, remove, sendRequest, changeAlias, removeAlias };
 }

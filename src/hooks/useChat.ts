@@ -379,14 +379,26 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
       }
     };
 
+    const handleConversationRenamed = (data: { conversationId: number; title: string }) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === String(data.conversationId)
+            ? { ...c, name: data.title }
+            : c
+        )
+      );
+    };
+
     socket.on("message:new", handleNewMessage);
     socket.on("message:reaction", handleMessageReaction);
     socket.on("message:recalled", handleMessageRecalled);
+    socket.on("conversation:renamed", handleConversationRenamed);
 
     return () => {
       socket.off("message:new", handleNewMessage);
       socket.off("message:reaction", handleMessageReaction);
       socket.off("message:recalled", handleMessageRecalled);
+      socket.off("conversation:renamed", handleConversationRenamed);
     };
   }, [socket, activeId, fetchConversations]);
 

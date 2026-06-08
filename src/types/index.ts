@@ -128,10 +128,16 @@ export interface Friend {
   readonly nick?: string;
   readonly phone?: string;
   readonly avatar?: string;
+  readonly cover?: string;
+  readonly gender?: number;
+  readonly dob?: string;
+  readonly signature?: string;
+  readonly zaloName?: string;
 }
 
 export interface FriendRequest {
   readonly id: string;
+  readonly externalId?: string;
   readonly name: string;
   readonly initials: string;
   readonly hue: number;

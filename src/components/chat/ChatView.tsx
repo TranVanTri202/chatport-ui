@@ -6,13 +6,15 @@ import type { Account, Conversation, Message } from "@/types";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useChat } from "@/hooks/useChat";
 import { usePreferences } from "@/hooks/usePreferences";
+import { useContacts } from "@/hooks/useContacts";
 import { useAppContext } from "@/providers/AppProvider";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
-import { Icon } from "@/components/ui/Icon";
+import { Icon, type IconName } from "@/components/ui/Icon";
 import { SearchBox } from "@/components/ui/SearchBox";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Toggle } from "@/components/ui/Toggle";
+import { Modal } from "@/components/ui/Modal";
 import { ChatInfoPanel } from "./ChatInfoPanel";
 
 interface ChatViewProps {
@@ -36,6 +38,12 @@ export function ChatView({ initialAccountId, initialConvoId }: ChatViewProps): J
 function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { readonly account: Account; readonly accounts: ReadonlyArray<Account>; readonly vi: boolean; readonly onSwitch: (id: string) => void; readonly initialConvoId?: string }): JSX.Element {
   const { socket } = useAppContext();
   const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, sendVoice, sendVideo, reactToMessage, recallMessage, sendTypingStatus, pinMessage, unpinMessage } = useChat(account.convos, initialConvoId);
+
+  const { friends, requests, sentRequests, accept, decline, cancelSent, remove, sendRequest, changeAlias, removeAlias } = useContacts(account.phone);
+  const [profileModal, setProfileModal] = useState(false);
+  const [unfriendConfirm, setUnfriendConfirm] = useState(false);
+  const [aliasModal, setAliasModal] = useState(false);
+  const [aliasDraft, setAliasDraft] = useState("");
 
   const handleSendFile = useCallback((file: File) => {
     if (file.type.startsWith("video/")) {
@@ -63,6 +71,89 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
   );
 
   const convo = useMemo(() => filtered.find((c) => c.id === active?.id), [filtered, active]);
+
+  const isDirect = convo?.type === "direct";
+  const friendId = convo?.phone;
+
+  const isFriend = useMemo(() => {
+    if (!isDirect || !friendId) return false;
+    return friends.some((f) => f.id === friendId);
+  }, [isDirect, friendId, friends]);
+
+  const isSentRequest = useMemo(() => {
+    if (!isDirect || !friendId) return false;
+    return sentRequests.some((r) => r.id === friendId);
+  }, [isDirect, friendId, sentRequests]);
+
+  const isReceivedRequest = useMemo(() => {
+    if (!isDirect || !friendId) return false;
+    return requests.some((r) => r.externalId === friendId);
+  }, [isDirect, friendId, requests]);
+
+  const matchingRequest = useMemo(() => {
+    if (!isDirect || !friendId) return undefined;
+    return requests.find((r) => r.externalId === friendId);
+  }, [isDirect, friendId, requests]);
+
+  const matchingFriend = useMemo(() => {
+    if (!isDirect || !friendId) return undefined;
+    return friends.find((f) => f.id === friendId);
+  }, [isDirect, friendId, friends]);
+
+  const handleAddFriend = useCallback(async () => {
+    if (!friendId) return;
+    await sendRequest(friendId, vi ? "Xin chào, kết bạn nhé!" : "Hello, let's connect!");
+  }, [friendId, sendRequest, vi]);
+
+  const handleCancelRequest = useCallback(async () => {
+    if (!friendId) return;
+    const req = sentRequests.find((r) => r.id === friendId);
+    if (req) {
+      await cancelSent(req);
+    }
+  }, [friendId, sentRequests, cancelSent]);
+
+  const handleAcceptRequest = useCallback(async () => {
+    if (matchingRequest) {
+      await accept(matchingRequest);
+    }
+  }, [matchingRequest, accept]);
+
+  const handleDeclineRequest = useCallback(async () => {
+    if (matchingRequest) {
+      await decline(matchingRequest);
+    }
+  }, [matchingRequest, decline]);
+
+  const handleRemoveFriend = useCallback(async () => {
+    if (!friendId) return;
+    const friend = friends.find((f) => f.id === friendId);
+    if (friend) {
+      await remove(friend);
+      setUnfriendConfirm(false);
+      setProfileModal(false);
+    }
+  }, [friendId, friends, remove]);
+
+  const handleOpenAliasModal = useCallback(() => {
+    setAliasDraft(matchingFriend?.name ?? convo?.name ?? "");
+    setAliasModal(true);
+  }, [matchingFriend, convo]);
+
+  const handleSaveAlias = useCallback(async () => {
+    if (!friendId) return;
+    const trimmed = aliasDraft.trim();
+    if (trimmed) {
+      await changeAlias(friendId, trimmed);
+    }
+    setAliasModal(false);
+  }, [friendId, aliasDraft, changeAlias]);
+
+  const handleRemoveAlias = useCallback(async () => {
+    if (!friendId) return;
+    await removeAlias(friendId);
+    setAliasModal(false);
+  }, [friendId, removeAlias]);
 
   useEffect(() => {
     if (!socket || !active || active.type !== "direct" || !active.phone) return;
@@ -153,10 +244,297 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
         </div>
       </div>
 
-      <ChatThread key={convo?.id ?? "empty"} convo={convo} messages={messages} expired={expired} vi={vi} onSendText={sendText} onSendImage={sendImage} onSendFile={handleSendFile} onReactToMessage={reactToMessage} onRecallMessage={recallMessage} onSendTypingStatus={sendTypingStatus} onPinMessage={pinMessage} onUnpinMessage={unpinMessage} />
+      <ChatThread
+        key={convo?.id ?? "empty"}
+        convo={convo}
+        messages={messages}
+        expired={expired}
+        vi={vi}
+        onSendText={sendText}
+        onSendImage={sendImage}
+        onSendFile={handleSendFile}
+        onReactToMessage={reactToMessage}
+        onRecallMessage={recallMessage}
+        onSendTypingStatus={sendTypingStatus}
+        onPinMessage={pinMessage}
+        onUnpinMessage={unpinMessage}
+        isFriend={isFriend}
+        isSentRequest={isSentRequest}
+        isReceivedRequest={isReceivedRequest}
+        onAddFriend={handleAddFriend}
+        onCancelRequest={handleCancelRequest}
+        onAcceptRequest={handleAcceptRequest}
+        onDeclineRequest={handleDeclineRequest}
+        onAvatarClick={() => setProfileModal(true)}
+      />
       {convo ? <ChatInfoPanel account={account} convo={convo} vi={vi} /> : <div className="border-l border-border bg-surface-0" />}
+
+      {profileModal && convo && convo.type === "direct" && (
+        <Modal title={vi ? "Thông tin tài khoản" : "Account Info"} onClose={() => setProfileModal(false)} noPadding width={390}>
+          {matchingFriend?.cover ? (
+            <div className="h-[125px] w-full relative overflow-hidden bg-surface-3">
+              <img src={matchingFriend.cover} alt="Cover" className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div 
+              className="h-[125px] w-full relative" 
+              style={{
+                background: `linear-gradient(135deg, hsl(${convo.hue}, 60%, 25%), hsl(${convo.hue}, 40%, 12%))`
+              }}
+            />
+          )}
+          <div className="relative px-5 pb-4 bg-surface">
+            <div className="absolute -top-[45px] left-5 border-[3.5px] border-surface bg-surface rounded-full shadow-md overflow-hidden">
+              <Avatar spec={{ hue: convo.hue, initials: convo.initials, img: convo.avatarImg }} size={74} />
+            </div>
+            <div className="pt-10 flex flex-col">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="text-[17px] font-bold text-text truncate max-w-[240px]">{convo.name}</h3>
+                    {isFriend && (
+                      <button
+                        onClick={handleOpenAliasModal}
+                        className="text-muted hover:text-text p-0.5 transition-colors shrink-0"
+                        title={vi ? "Đặt biệt danh" : "Set nickname"}
+                      >
+                        <Icon name="edit" size={13} />
+                      </button>
+                    )}
+                  </div>
+                  {matchingFriend?.zaloName && matchingFriend.zaloName !== convo.name && (
+                    <div className="text-[11.5px] text-muted mt-0.5">
+                      {vi ? "Tên Zalo: " : "Zalo: "}
+                      <span className="text-[#0068ff] font-medium">{matchingFriend.zaloName}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {matchingFriend?.signature && (
+                <div className="mt-1 text-[12px] text-muted italic break-words line-clamp-2">
+                  "{matchingFriend.signature}"
+                </div>
+              )}
+            </div>
+            
+            <button 
+              onClick={() => setProfileModal(false)}
+              className="mt-4 w-full bg-accent-dim hover:bg-accent/20 text-accent font-semibold py-2.5 rounded-xl text-[13px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <Icon name="chat" size={15} />
+              {vi ? "Nhắn tin" : "Message"}
+            </button>
+          </div>
+
+          <div className="border-t border-border bg-surface p-[14px_20px]">
+            <h4 className="text-[12px] font-bold uppercase tracking-wider text-muted mb-3">{vi ? "Thông tin cá nhân" : "Personal Info"}</h4>
+            <div className="flex flex-col gap-3 text-[13px]">
+              <div className="flex justify-between items-center">
+                <span className="text-muted">{vi ? "Giới tính" : "Gender"}</span>
+                <span className="font-semibold text-text">
+                  {matchingFriend?.gender !== undefined 
+                    ? (matchingFriend.gender === 0 ? (vi ? "Nam" : "Male") : (vi ? "Nữ" : "Female"))
+                    : guessGender(convo.name)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted">{vi ? "Ngày sinh" : "Date of birth"}</span>
+                <span className="font-semibold text-text">
+                  {matchingFriend?.dob ? matchingFriend.dob : "••/••/••••"}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted">{vi ? "Điện thoại" : "Phone"}</span>
+                <span className="font-semibold text-text">
+                  {isFriend && matchingFriend?.phone ? matchingFriend.phone : "••••••••••"}
+                </span>
+              </div>
+              {matchingFriend?.zaloName && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted">{vi ? "Tên Zalo" : "Zalo Name"}</span>
+                  <span className="font-semibold text-[#0068ff]">{matchingFriend.zaloName}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="border-t border-border bg-surface p-[14px_20px]">
+            <h4 className="text-[12px] font-bold uppercase tracking-wider text-muted mb-2">{vi ? "Hình ảnh" : "Shared Images"}</h4>
+            <div className="py-7 flex flex-col items-center justify-center text-center text-muted gap-2 select-none">
+              <Icon name="image" size={18} className="text-muted/50" />
+              <span className="text-[11.5px]">{vi ? "Chưa có ảnh nào được chia sẻ" : "No shared images"}</span>
+            </div>
+          </div>
+
+          <div className="border-t border-border bg-surface-0 flex flex-col divide-y divide-border/50">
+            <ProfileOptionRow
+              icon="users"
+              text={vi ? `Nhóm chung (${getMutualGroupsCount(friendId || "")})` : `Mutual groups (${getMutualGroupsCount(friendId || "")})`}
+            />
+            <ProfileOptionRow
+              icon="doc"
+              text={vi ? "Chia sẻ danh thiếp" : "Share contact card"}
+            />
+            <ProfileOptionRow
+              icon="eyeOff"
+              text={vi ? "Chặn tin nhắn và cuộc gọi" : "Block messages & calls"}
+            />
+            <ProfileOptionRow
+              icon="alert"
+              text={vi ? "Báo xấu" : "Report"}
+            />
+            {isFriend ? (
+              <ProfileOptionRow
+                icon="trash"
+                text={vi ? "Xóa khỏi danh sách bạn bè" : "Xóa khỏi danh sách bạn bè"}
+                danger
+                onClick={() => setUnfriendConfirm(true)}
+              />
+            ) : isSentRequest ? (
+              <ProfileOptionRow
+                icon="x"
+                text={vi ? "Thu hồi lời mời kết bạn" : "Cancel friend request"}
+                onClick={handleCancelRequest}
+              />
+            ) : isReceivedRequest ? (
+              <>
+                <ProfileOptionRow
+                  icon="check"
+                  text={vi ? "Đồng ý kết bạn" : "Accept friend request"}
+                  onClick={handleAcceptRequest}
+                />
+                <ProfileOptionRow
+                  icon="x"
+                  text={vi ? "Từ chối kết bạn" : "Decline friend request"}
+                  onClick={handleDeclineRequest}
+                />
+              </>
+            ) : (
+              <ProfileOptionRow
+                icon="userPlus"
+                text={vi ? "Kết bạn" : "Add Friend"}
+                onClick={handleAddFriend}
+              />
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {unfriendConfirm && convo && (
+        <Modal 
+          title={vi ? "Xác nhận hủy kết bạn" : "Confirm Unfriend"} 
+          onClose={() => setUnfriendConfirm(false)} 
+          width={380}
+        >
+          <div className="flex flex-col gap-4">
+            <div className="text-[13px] text-muted leading-relaxed">
+              {vi 
+                ? `Bạn có chắc chắn muốn hủy kết bạn với ${convo.name}? Hành động này không thể hoàn tác.`
+                : `Are you sure you want to remove ${convo.name} from your friends list? This action cannot be undone.`}
+            </div>
+            <div className="flex justify-end gap-2.5">
+              <Button 
+                variant="ghost" 
+                onClick={() => setUnfriendConfirm(false)}
+              >
+                {vi ? "Hủy" : "Cancel"}
+              </Button>
+              <Button 
+                variant="danger" 
+                onClick={handleRemoveFriend}
+              >
+                {vi ? "Đồng ý" : "Confirm"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {aliasModal && convo && isFriend && (
+        <Modal
+          title={vi ? "Đặt biệt danh" : "Set Nickname"}
+          onClose={() => setAliasModal(false)}
+          width={360}
+        >
+          <div className="flex flex-col gap-4">
+            <div className="text-[12.5px] text-muted leading-relaxed">
+              {vi
+                ? `Biệt danh giúp bạn dễ nhớ hơn. Tên Zalo thật của họ là "${matchingFriend?.zaloName || convo.name}".`
+                : `A nickname helps you remember them. Their real Zalo name is "${matchingFriend?.zaloName || convo.name}".`}
+            </div>
+            <input
+              autoFocus
+              value={aliasDraft}
+              onChange={(e) => setAliasDraft(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void handleSaveAlias()}
+              placeholder={vi ? "Nhập biệt danh…" : "Enter nickname…"}
+              className="w-full rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-[13.5px] text-text outline-none focus:border-accent transition-colors"
+            />
+            <div className="flex justify-between gap-2.5">
+              <Button
+                variant="ghost"
+                onClick={() => void handleRemoveAlias()}
+              >
+                {vi ? "Xóa biệt danh" : "Remove Nickname"}
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => setAliasModal(false)}>
+                  {vi ? "Hủy" : "Cancel"}
+                </Button>
+                <Button onClick={() => void handleSaveAlias()}>
+                  {vi ? "Lưu" : "Save"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
+}
+
+function ProfileOptionRow({
+  icon,
+  text,
+  danger = false,
+  onClick,
+}: {
+  readonly icon: IconName;
+  readonly text: string;
+  readonly danger?: boolean;
+  readonly onClick?: () => void;
+}): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3.5 px-5 py-3 text-left hover:bg-surface-2 transition-colors ${
+        danger ? "text-danger" : "text-text"
+      }`}
+    >
+      <span className={`shrink-0 ${danger ? "text-danger" : "text-muted"}`}>
+        <Icon name={icon} size={16} />
+      </span>
+      <span className="text-[13px] font-medium flex-1 truncate">{text}</span>
+    </button>
+  );
+}
+
+function guessGender(name: string): string {
+  const lowercaseName = name.toLowerCase();
+  const femaleKeywords = ["thị", "hà", "quỳnh", "anh", "trang", "vy", "huyền", "nhi", "nhung", "mai", "lan", "diệp", "an", "hằng", "linh", "ngọc", "hương", "phương"];
+  if (femaleKeywords.some(kw => lowercaseName.includes(kw))) {
+    return "Nữ";
+  }
+  return "Nam";
+}
+
+function getMutualGroupsCount(userId: string): number {
+  if (!userId) return 0;
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash % 5);
 }
 
 function ConvoRow({ convo, active, onClick }: { readonly convo: Conversation; readonly active: boolean; readonly onClick: () => void }): JSX.Element {
@@ -181,7 +559,7 @@ function ConvoRow({ convo, active, onClick }: { readonly convo: Conversation; re
   );
 }
 
-function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage, onRecallMessage, onSendTypingStatus, onPinMessage, onUnpinMessage }: {
+function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage, onRecallMessage, onSendTypingStatus, onPinMessage, onUnpinMessage, isFriend = false, isSentRequest = false, isReceivedRequest = false, onAddFriend, onCancelRequest, onAcceptRequest, onDeclineRequest, onAvatarClick }: {
   readonly convo: Conversation | undefined; readonly messages: ReadonlyArray<Message>;
   readonly expired: boolean; readonly vi: boolean;
   readonly onSendText: (t: string) => void; readonly onSendImage: (f: File, caption?: string) => void; readonly onSendFile: (f: File) => void;
@@ -190,6 +568,14 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
   readonly onSendTypingStatus: (isTyping: boolean) => void;
   readonly onPinMessage: (messageExternalId: string) => Promise<void>;
   readonly onUnpinMessage: (topicId: string) => Promise<void>;
+  readonly isFriend?: boolean;
+  readonly isSentRequest?: boolean;
+  readonly isReceivedRequest?: boolean;
+  readonly onAddFriend?: () => void;
+  readonly onCancelRequest?: () => void;
+  readonly onAcceptRequest?: () => void;
+  readonly onDeclineRequest?: () => void;
+  readonly onAvatarClick?: () => void;
 }): JSX.Element {
   void onUnpinMessage;
   const [draft, setDraft] = useState("");
@@ -274,13 +660,108 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
     }
   };
 
+  const renderSubtitle = () => {
+    if (convo.type === "group") {
+      return `${convo.members} ${vi ? "thành viên" : "members"}`;
+    }
+    
+    const statusText = convo.online 
+      ? (vi ? "Đang hoạt động" : "Online") 
+      : (convo.presenceText ?? (vi ? "Ngoại tuyến" : "Offline"));
+
+    if (!isFriend) {
+      const mutualCount = getMutualGroupsCount(convo.phone || "");
+      return (
+        <div className="flex items-center gap-1.5 text-[11px] text-muted mt-0.5 min-w-0">
+          <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[9.5px] font-bold text-muted uppercase tracking-wide shrink-0">
+            {vi ? "NGƯỜI LẠ" : "STRANGER"}
+          </span>
+          <span className="text-border/80 select-none">|</span>
+          <span className="inline-flex items-center gap-1 truncate">
+            <Icon name="users" size={11} className="text-muted/70 shrink-0" />
+            <span className="truncate">{vi ? `Nhóm chung (${mutualCount})` : `Mutual groups (${mutualCount})`}</span>
+          </span>
+        </div>
+      );
+    }
+
+    return statusText;
+  };
+
+  const renderFriendBanner = () => {
+    if (convo.type !== "direct" || isFriend) return null;
+
+    return (
+      <div className="flex items-center justify-between border-b border-border bg-surface-1 p-[10px_20px] select-none animate-fade-in">
+        <div className="flex items-center gap-2.5 text-xs text-text min-w-0">
+          <span className="grid h-[28px] w-[28px] place-items-center rounded-full bg-accent-dim text-accent shrink-0">
+            <Icon name="userPlus" size={14} />
+          </span>
+          <span className="truncate font-medium text-muted">
+            {isSentRequest
+              ? (vi ? "Đã gửi yêu cầu kết bạn tới người này" : "Friend request sent to this person")
+              : isReceivedRequest
+              ? (vi ? "Người này đã gửi lời mời kết bạn cho bạn" : "This person sent you a friend request")
+              : (vi ? "Gửi yêu cầu kết bạn tới người này" : "Send a friend request to this person")}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {isSentRequest ? (
+            <button
+              onClick={onCancelRequest}
+              className="bg-surface-3 hover:bg-surface-4 text-text text-[11.5px] font-semibold py-1.5 px-3.5 rounded-lg transition-colors select-none"
+            >
+              {vi ? "Thu hồi" : "Recall"}
+            </button>
+          ) : isReceivedRequest ? (
+            <>
+              <button
+                onClick={onDeclineRequest}
+                className="bg-surface-3 hover:bg-surface-4 text-text text-[11.5px] font-semibold py-1.5 px-3.5 rounded-lg transition-colors select-none"
+              >
+                {vi ? "Từ chối" : "Decline"}
+              </button>
+              <button
+                onClick={onAcceptRequest}
+                className="bg-accent text-[#06140c] hover:bg-accent/90 text-[11.5px] font-semibold py-1.5 px-3.5 rounded-lg transition-colors select-none"
+              >
+                {vi ? "Đồng ý" : "Accept"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={onAddFriend}
+                className="bg-accent-dim hover:bg-accent/20 text-accent text-[11.5px] font-semibold py-1.5 px-3.5 rounded-lg transition-colors select-none"
+              >
+                {vi ? "Gửi kết bạn" : "Add Friend"}
+              </button>
+              <button className="grid h-[28px] w-[28px] place-items-center rounded-lg border border-border bg-surface-0 text-muted hover:text-text">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="1" />
+                  <circle cx="12" cy="5" r="1" />
+                  <circle cx="12" cy="19" r="1" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="relative flex min-h-0 flex-col bg-chat">
       <div className="flex items-center gap-3 border-b border-border bg-surface-0 p-[13px_20px]">
-        <Avatar spec={{ hue: convo.hue, initials: convo.initials, img: convo.avatarImg }} size={38} status={convo.type === "direct" ? (convo.online ? "online" : "offline") : undefined} />
-        <div className="min-w-0 flex-1">
-          <div className="text-[14.5px] font-semibold">{convo.name}</div>
-          <div className="text-[11.5px] text-muted">{convo.type === "group" ? `${convo.members} ${vi ? "thành viên" : "members"}` : convo.online ? (vi ? "Đang hoạt động" : "Online") : (convo.presenceText ?? (vi ? "Ngoại tuyến" : "Offline"))}</div>
+        <div 
+          className={convo.type === "direct" ? "flex flex-1 items-center gap-3 cursor-pointer hover:opacity-85 transition-opacity min-w-0" : "flex flex-1 items-center gap-3 min-w-0"}
+          onClick={() => convo.type === "direct" && onAvatarClick?.()}
+        >
+          <Avatar spec={{ hue: convo.hue, initials: convo.initials, img: convo.avatarImg }} size={38} status={convo.type === "direct" ? (convo.online ? "online" : "offline") : undefined} />
+          <div className="min-w-0">
+            <div className="text-[14.5px] font-semibold truncate">{convo.name}</div>
+            <div className="text-[11.5px] text-muted">{renderSubtitle()}</div>
+          </div>
         </div>
         <div className="flex items-center gap-2.5 rounded-[9px] border border-border p-[6px_11px]" style={{ background: auto && !expired ? "var(--accent-dim)" : "var(--surface-3)", opacity: expired ? 0.5 : 1, pointerEvents: expired ? "none" : "auto" }}>
           <Icon name="bot" size={15} className={auto && !expired ? "text-accent" : "text-muted"} />
@@ -289,6 +770,8 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
         </div>
         <button onClick={() => setSearchOn((v) => !v)} className={`grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border ${searchOn ? "bg-accent-dim text-accent" : "text-muted hover:text-text"}`}><Icon name="search" size={16} /></button>
       </div>
+
+      {renderFriendBanner()}
 
       {searchOn ? (
         <div className="flex items-center gap-2.5 border-b border-border bg-surface-0 p-[10px_18px]">

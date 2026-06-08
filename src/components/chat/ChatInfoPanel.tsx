@@ -43,7 +43,6 @@ function DirectHeader({ convo, vi }: { readonly convo: Conversation; readonly vi
     const id = setTimeout(() => setFs("friend"), 2000);
     return () => clearTimeout(id);
   }, [fs]);
-  const isFriend = fs === "friend";
 
   return (
     <>
@@ -54,9 +53,7 @@ function DirectHeader({ convo, vi }: { readonly convo: Conversation; readonly vi
           {convo.nick ? <div className="mt-0.5 text-[12.5px] text-muted">~ {convo.nick}</div> : null}
           <div className="mt-1 text-xs text-muted">{convo.online ? (vi ? "Đang hoạt động" : "Online") : (convo.presenceText ?? (vi ? "Ngoại tuyến" : "Offline"))}</div>
         </div>
-        {fs === "friend" ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-dim px-3 py-1.5 text-[12.5px] font-semibold text-accent"><Icon name="userCheck" size={14} /> {vi ? "Bạn bè" : "Friends"}</span>
-        ) : fs === "none" ? (
+        {fs === "friend" ? null : fs === "none" ? (
           <Button size="sm" icon="userPlus" onClick={() => setFs("pending")}>{vi ? "Kết bạn" : "Add friend"}</Button>
         ) : (
           <div className="flex flex-col items-center gap-2">
@@ -65,20 +62,10 @@ function DirectHeader({ convo, vi }: { readonly convo: Conversation; readonly vi
           </div>
         )}
       </div>
-
-      <section className="border-b border-border py-4">
-        <Label>{vi ? "Thông tin liên hệ" : "Contact info"}</Label>
-        <div className="flex flex-col gap-3.5">
-          <ContactRow icon="phone" label={vi ? "Số điện thoại" : "Phone"}>
-            {isFriend ? <span className="text-[13px] font-semibold">{convo.phone}</span> : <span className="text-[12.5px] text-muted">•••• ••• ••• · {vi ? "Kết bạn để xem" : "Add friend to view"}</span>}
-          </ContactRow>
-          <ContactRow icon="users" label={vi ? "Biệt danh" : "Nickname"}><span className="text-[13px] font-semibold">{convo.nick ?? convo.name}</span></ContactRow>
-          <ContactRow icon="info" label={vi ? "Nguồn" : "Source"}><span className={`text-[12.5px] ${isFriend ? "text-text" : "text-muted"}`}>{isFriend ? (vi ? "Danh bạ Zalo" : "Zalo contacts") : vi ? "Người lạ" : "Stranger"}</span></ContactRow>
-        </div>
-      </section>
     </>
   );
 }
+
 
 function GroupHeader({ account, convo, vi }: { readonly account: Account; readonly convo: Conversation; readonly vi: boolean }): JSX.Element {
   const [name, setName] = useState(convo.name);
@@ -201,14 +188,3 @@ function Row({ label, value, accent = false }: { readonly label: string; readonl
   );
 }
 
-function ContactRow({ icon, label, children }: { readonly icon: Parameters<typeof Icon>[0]["name"]; readonly label: string; readonly children: React.ReactNode }): JSX.Element {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="grid h-[30px] w-[30px] place-items-center rounded-[9px] border border-border bg-surface-2 text-muted"><Icon name={icon} size={15} /></span>
-      <div className="min-w-0 flex-1">
-        <div className="mb-px text-[11px] text-muted">{label}</div>
-        {children}
-      </div>
-    </div>
-  );
-}
