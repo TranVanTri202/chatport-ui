@@ -64,7 +64,7 @@ export interface Conversation {
 }
 
 export type MessageSender = "them" | "me" | "ai";
-export type MessageKind = "text" | "image" | "file" | "video" | "voice" | "event" | "card" | "location";
+export type MessageKind = "text" | "image" | "file" | "video" | "voice" | "event" | "card" | "location" | "sticker";
 
 export interface MessageReaction {
   readonly userId: string;

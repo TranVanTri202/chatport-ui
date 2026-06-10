@@ -40,7 +40,7 @@ export function ChatView({ initialAccountId, initialConvoId }: ChatViewProps): J
 function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { readonly account: Account; readonly accounts: ReadonlyArray<Account>; readonly vi: boolean; readonly onSwitch: (id: string) => void; readonly initialConvoId?: string }): JSX.Element {
   const { showToast } = useToast();
   const { socket } = useAppContext();
-  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, sendVoice, sendVideo, reactToMessage, recallMessage, sendTypingStatus, pinMessage, unpinMessage, toggleMute } = useChat(account.convos, initialConvoId);
+  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, sendVoice, sendVideo, reactToMessage, recallMessage, sendTypingStatus, pinMessage, unpinMessage, toggleMute, sendSticker } = useChat(account.convos, initialConvoId);
 
   const { friends, requests, sentRequests, accept, decline, cancelSent, remove, sendRequest, changeAlias, removeAlias } = useContacts(account.phone);
   const [profileModal, setProfileModal] = useState(false);
@@ -375,9 +375,11 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
         messages={messages}
         expired={expired}
         vi={vi}
+        botId={account.id}
         onSendText={sendText}
         onSendImage={sendImage}
         onSendFile={handleSendFile}
+        onSendSticker={sendSticker}
         onReactToMessage={reactToMessage}
         onRecallMessage={recallMessage}
         onSendTypingStatus={sendTypingStatus}
@@ -1070,10 +1072,12 @@ function ConvoRow({ convo, active, onClick }: { readonly convo: Conversation; re
   );
 }
 
-function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage, onRecallMessage, onSendTypingStatus, onPinMessage, onUnpinMessage, isFriend = false, isSentRequest = false, isReceivedRequest = false, onAddFriend, onCancelRequest, onAcceptRequest, onDeclineRequest, onAvatarClick, onForwardClick, onToggleMute }: {
+function ChatThread({ convo, messages, expired, vi, botId, onSendText, onSendImage, onSendFile, onSendSticker, onReactToMessage, onRecallMessage, onSendTypingStatus, onPinMessage, onUnpinMessage, isFriend = false, isSentRequest = false, isReceivedRequest = false, onAddFriend, onCancelRequest, onAcceptRequest, onDeclineRequest, onAvatarClick, onForwardClick, onToggleMute }: {
   readonly convo: Conversation | undefined; readonly messages: ReadonlyArray<Message>;
   readonly expired: boolean; readonly vi: boolean;
+  readonly botId?: string;
   readonly onSendText: (t: string) => void; readonly onSendImage: (f: File, caption?: string) => void; readonly onSendFile: (f: File) => void;
+  readonly onSendSticker?: (sticker: { sticker_id: number; cat_id: number; sticker_type: number; url: string }) => void;
   readonly onReactToMessage: (messageExternalId: string, reactIcon: string) => Promise<void>;
   readonly onRecallMessage: (messageExternalId: string) => Promise<void>;
   readonly onSendTypingStatus: (isTyping: boolean) => void;
@@ -1098,6 +1102,13 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
   const [pinnedExpanded, setPinnedExpanded] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [showStickerPicker, setShowStickerPicker] = useState(false);
+  const [stickerQuery, setStickerQuery] = useState("");
+  const [stickers, setStickers] = useState<Array<{ sticker_id: number; cat_id: number; sticker_type: number; url: string; sprite_url?: string }>>([]);
+  const [stickersLoading, setStickersLoading] = useState(false);
+  const stickerPickerRef = useRef<HTMLDivElement>(null);
+  const [suggestedStickers, setSuggestedStickers] = useState<Array<{ sticker_id: number; cat_id: number; sticker_type: number; url: string }>>([]);
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
   const imgRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1130,10 +1141,79 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
     }
   }, [shown]);
 
-  if (!convo) return <div className="grid place-items-center bg-chat text-muted">—</div>;
-  
+  // Close sticker picker when clicking outside
+  useEffect(() => {
+    if (!showStickerPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (stickerPickerRef.current && !stickerPickerRef.current.contains(e.target as Node)) {
+        setShowStickerPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showStickerPicker]);
+
+  // Load stickers when picker opens or query changes
+  useEffect(() => {
+    if (!showStickerPicker || !convo) return;
+    if (!botId) return;
+    let cancelled = false;
+    setStickersLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get(`/channels/zalo/stickers/${botId}${stickerQuery.trim() ? `?keyword=${encodeURIComponent(stickerQuery.trim())}` : ''}`) as any;
+        if (!cancelled) setStickers(Array.isArray(res?.data) ? res.data : []);
+      } catch { if (!cancelled) setStickers([]); }
+      finally { if (!cancelled) setStickersLoading(false); }
+    }, stickerQuery ? 400 : 0);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [showStickerPicker, stickerQuery, convo, botId]);
+
+  // Emotion keyword → sticker search keyword mapping
+  const EMOTION_KEYWORDS: Record<string, string> = {
+    'haha': 'haha', 'hihi': 'haha', 'hehe': 'haha', 'lol': 'haha', 'lmao': 'haha', 'cười': 'haha',
+    'buồn': 'buồn', 'sad': 'buồn', 'chán': 'buồn', 'khóc': 'khóc', 'cry': 'khóc', 'huhu': 'khóc',
+    'tức': 'tức giận', 'giận': 'tức giận', 'angry': 'tức giận', 'bực': 'tức giận',
+    'vui': 'vui', 'happy': 'vui', 'mừng': 'vui', 'thích': 'vui',
+    'yêu': 'yêu', 'love': 'yêu', 'thương': 'yêu', 'cute': 'cute', 'dễ thương': 'cute',
+    'wow': 'wow', 'ngạc nhiên': 'wow', 'surprised': 'wow',
+    'sợ': 'sợ', 'fear': 'sợ', 'scared': 'sợ',
+    'xin lỗi': 'xin lỗi', 'sorry': 'xin lỗi',
+    'ok': 'ok', 'oke': 'ok', 'okay': 'ok',
+    'ghê': 'tức giận',
+  };
+
+  // Watch draft for emotion keywords in first 2 words
+  useEffect(() => {
+    if (!botId || !onSendSticker) return;
+    const words = draft.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length === 0 || words.length > 2) {
+      setSuggestedStickers([]);
+      setSuggestionDismissed(false);
+      return;
+    }
+    const firstTwo = words.slice(0, 2).join(' ');
+    let keyword: string | null = null;
+    for (const [trigger, mapped] of Object.entries(EMOTION_KEYWORDS)) {
+      if (firstTwo.includes(trigger)) { keyword = mapped; break; }
+    }
+    if (!keyword) { setSuggestedStickers([]); return; }
+    if (suggestionDismissed) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get(`/channels/zalo/stickers/${botId}?keyword=${encodeURIComponent(keyword as string)}`) as any;
+        if (!cancelled) setSuggestedStickers(Array.isArray(res?.data) ? res.data.slice(0, 20) : []);
+      } catch { if (!cancelled) setSuggestedStickers([]); }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, botId, suggestionDismissed]);
+
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isTypingRef = useRef(false);
+
+  if (!convo) return <div className="grid place-items-center bg-chat text-muted">—</div>;
 
   const handleInputChange = (val: string) => {
     setDraft(val);
@@ -1478,17 +1558,125 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
               </div>
             </div>
           ) : null}
+
+          {/* Smart Sticker Suggestion Strip */}
+          {suggestedStickers.length > 0 && onSendSticker && !showStickerPicker && (
+            <div className="flex items-center gap-1.5 border-b border-border bg-surface-2/80 px-3 py-2 overflow-hidden" style={{ animation: 'slideDown 0.18s ease-out' }}>
+              <div className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-accent/80 mr-0.5 select-none">✨</span>
+                {suggestedStickers.map((s) => (
+                  <button
+                    key={s.sticker_id}
+                    onClick={() => { onSendSticker(s); setSuggestedStickers([]); setSuggestionDismissed(true); }}
+                    className="shrink-0 h-[72px] w-[72px] flex items-center justify-center rounded-xl hover:bg-surface-3 hover:scale-110 active:scale-95 transition-all duration-150"
+                    title={`Sticker #${s.sticker_id}`}
+                  >
+                    <img src={s.url} alt="" className="h-[64px] w-[64px] object-contain" loading="lazy" />
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setSuggestedStickers([]); setSuggestionDismissed(true); }}
+                className="shrink-0 grid h-6 w-6 place-items-center rounded-full text-muted hover:text-text hover:bg-surface-3 transition-colors ml-1"
+                title={vi ? 'Ẩn gợi ý' : 'Dismiss'}
+              >
+                <Icon name="x" size={12} />
+              </button>
+            </div>
+          )}
+
           <div className="p-[12px_18px_16px]">
             {auto ? <div className="mb-2.5 flex items-center gap-2 text-[11.5px] text-accent"><span className="h-1.5 w-1.5 rounded-full bg-accent" /> {vi ? "AI đang tự trả lời · nhập để tiếp quản" : "AI is replying · type to take over"}</div> : null}
-            <div className="flex items-center gap-2">
+            <div className="relative flex items-center gap-2">
               <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setSelectedImage(f); setImagePreviewUrl(URL.createObjectURL(f)); } e.target.value = ""; }} />
               <input ref={fileRef} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onSendFile(f); e.target.value = ""; }} />
               <button onClick={() => imgRef.current?.click()} className="grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border text-muted hover:text-text"><Icon name="image" size={18} /></button>
               <button onClick={() => fileRef.current?.click()} className="grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border text-muted hover:text-text"><Icon name="paperclip" size={18} /></button>
+              {onSendSticker && (
+                <button
+                  onClick={() => { setShowStickerPicker(v => !v); setStickerQuery(""); }}
+                  className={`grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border transition-colors ${showStickerPicker ? 'border-accent text-accent bg-accent/10' : 'text-muted hover:text-text'}`}
+                  title={vi ? "Nhãn dán" : "Stickers"}
+                >
+                  <Icon name="smile" size={18} />
+                </button>
+              )}
               <div className="flex flex-1 items-center rounded-xl border border-border bg-surface-2 p-[4px_6px_4px_14px]">
                 <input value={draft} onChange={(e) => handleInputChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={vi ? "Nhập tin nhắn…" : "Type a message…"} className="flex-1 bg-transparent py-2 text-sm text-text outline-none" />
               </div>
               <Button icon="send" onClick={send} className="rounded-xl px-4 py-2.5">{vi ? "Gửi" : "Send"}</Button>
+
+              {/* Sticker Picker Overlay */}
+              {showStickerPicker && onSendSticker && (
+                <div
+                  ref={stickerPickerRef}
+                  className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[340px] rounded-2xl border border-border bg-surface-0/95 shadow-2xl backdrop-blur-xl overflow-hidden"
+                  style={{ boxShadow: '0 -4px 40px rgba(0,0,0,0.35)' }}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
+                    <span className="text-[12px] font-bold text-text">{vi ? '🎭 Nhãn dán' : '🎭 Stickers'}</span>
+                    <button onClick={() => setShowStickerPicker(false)} className="grid h-6 w-6 place-items-center rounded-full text-muted hover:text-text hover:bg-surface-3 transition-colors">
+                      <Icon name="x" size={13} />
+                    </button>
+                  </div>
+                  {/* Search */}
+                  <div className="px-3 pt-2.5 pb-2">
+                    <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-1.5">
+                      <svg className="h-3.5 w-3.5 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="m21 21-4.35-4.35" /></svg>
+                      <input
+                        value={stickerQuery}
+                        onChange={e => setStickerQuery(e.target.value)}
+                        placeholder={vi ? 'Tìm nhãn dán…' : 'Search stickers…'}
+                        className="flex-1 bg-transparent text-[12.5px] text-text outline-none placeholder:text-muted"
+                        autoFocus
+                      />
+                      {stickerQuery && (
+                        <button onClick={() => setStickerQuery('')} className="text-muted hover:text-text">
+                          <Icon name="x" size={11} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {/* Grid */}
+                  <div className="h-[220px] overflow-y-auto px-2 pb-2 no-scrollbar">
+                    {stickersLoading ? (
+                      <div className="flex h-full items-center justify-center">
+                        <div className="flex gap-1.5">
+                          {[0, 1, 2].map(i => (
+                            <span key={i} className="h-2 w-2 rounded-full bg-accent animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                          ))}
+                        </div>
+                      </div>
+                    ) : stickers.length === 0 ? (
+                      <div className="flex h-full items-center justify-center text-[12px] text-muted italic">
+                        {vi ? 'Không tìm thấy nhãn dán' : 'No stickers found'}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-1 pt-1">
+                        {stickers.map((s) => (
+                          <button
+                            key={s.sticker_id}
+                            onClick={() => {
+                              onSendSticker(s);
+                              setShowStickerPicker(false);
+                            }}
+                            className="group relative flex items-center justify-center rounded-xl p-1 transition-all hover:bg-surface-3 hover:scale-105 active:scale-95"
+                            title={`Sticker #${s.sticker_id}`}
+                          >
+                            <img
+                              src={s.url}
+                              alt={`sticker-${s.sticker_id}`}
+                              className="h-16 w-16 object-contain"
+                              loading="lazy"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1589,8 +1777,14 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin, onForw
         
         <div
           onContextMenu={handleContextMenu}
-          className={`${cls} flex-1 rounded-[17px] p-[10px_14px] text-[13.5px] leading-relaxed relative cursor-pointer select-text`}
-          style={(!message.isRecalled || (showRecalledContent && (message.kind === "image" || message.kind === "video"))) ? (message.kind === "image" || message.kind === "video" ? { padding: 4 } : undefined) : undefined}
+          className={`${message.kind === 'sticker' && !message.isRecalled ? 'bg-transparent border-0 shadow-none' : cls} flex-1 rounded-[17px] p-[10px_14px] text-[13.5px] leading-relaxed relative cursor-pointer select-text`}
+          style={
+            message.kind === 'sticker' && !message.isRecalled
+              ? { background: 'none', border: 'none', boxShadow: 'none', padding: 2 }
+              : (!message.isRecalled || (showRecalledContent && (message.kind === "image" || message.kind === "video")))
+                ? (message.kind === "image" || message.kind === "video" ? { padding: 4 } : undefined)
+                : undefined
+          }
         >
           {message.isRecalled ? (
             <div className="flex flex-col gap-1.5 min-w-[175px]">
@@ -1658,6 +1852,8 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin, onForw
                 </div>
               )}
             </div>
+          ) : message.kind === "sticker" ? (
+            <img src={message.img} alt="Sticker" className="block w-[130px] h-[130px] object-contain select-none" style={{ imageRendering: 'auto' }} />
           ) : message.kind === "image" ? (
             <img src={message.img} alt="" className="block w-[248px] max-w-full rounded-xl object-cover animate-fade-in" />
           ) : message.kind === "video" ? (

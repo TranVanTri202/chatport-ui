@@ -21,6 +21,7 @@ export interface UseChatResult {
   pinMessage: (messageExternalId: string) => Promise<void>;
   unpinMessage: (topicId: string) => Promise<void>;
   toggleMute: (id: string, isMuted: boolean) => Promise<void>;
+  sendSticker: (sticker: { sticker_id: number; cat_id: number; sticker_type: number; url: string }) => void;
 }
 
 export function useChat(convoKey: string, initialConvoId?: string): UseChatResult {
@@ -123,6 +124,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         else if (m.type === "video") kind = "video";
         else if (m.type === "voice") kind = "voice";
         else if (m.type === "file") kind = "file";
+        else if (m.type === "sticker") kind = "sticker";
         else if (m.type === "pin") {
           kind = "event";
         } else if (m.type === "unknown") {
@@ -176,6 +178,9 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
               longitude: first.meta.longitude || "",
               url: first.url || "",
             };
+          } else if (kind === "sticker" || first.type === "sticker") {
+            kind = "sticker";
+            img = first.url;
           }
         }
 
@@ -273,7 +278,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         if (!isSilenced) {
           playNotificationSound();
           const senderName = convo?.name || "Zalo User";
-          const msgText = data.text || (data.type === "image" ? "[Hình ảnh]" : "[Tin nhắn]");
+          const msgText = data.text || (data.type === "image" ? "[Hình ảnh]" : data.type === "sticker" ? "[Nhãn dán]" : "[Tin nhắn]");
           showDesktopNotification(senderName, {
             body: msgText,
             icon: convo?.avatarImg || undefined,
@@ -293,6 +298,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
         else if (data.type === "video") kind = "video";
         else if (data.type === "voice") kind = "voice";
         else if (data.type === "file") kind = "file";
+        else if (data.type === "sticker") kind = "sticker";
         else if (data.type === "pin") {
           kind = "event";
         } else if (data.type === "unknown") {
@@ -346,6 +352,9 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
               longitude: first.meta.longitude || "",
               url: first.url || "",
             };
+          } else if (kind === "sticker" || first.type === "sticker") {
+            kind = "sticker";
+            img = first.url;
           }
         }
 
@@ -515,6 +524,26 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     }
   }, [botExternalId, active]);
 
+  const sendSticker = useCallback(async (sticker: { sticker_id: number; cat_id: number; sticker_type: number; url: string }) => {
+    if (!botExternalId || !active) return;
+
+    try {
+      await api.post("/messages/send/sticker", {
+        botExternalId,
+        threadId: active.phone,
+        threadType: active.type === "group" ? "group" : "user",
+        sticker: {
+          sticker_id: sticker.sticker_id,
+          cat_id: sticker.cat_id,
+          sticker_type: sticker.sticker_type,
+          url: sticker.url,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to send sticker:", error);
+    }
+  }, [botExternalId, active]);
+
   const reactToMessage = useCallback(async (messageExternalId: string, reactIcon: string) => {
     if (!botExternalId || !active) return;
 
@@ -623,6 +652,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     pinMessage,
     unpinMessage,
     toggleMute,
+    sendSticker,
   };
 }
 

@@ -4,7 +4,7 @@ export type IconName =
   | "dashboard" | "chat" | "bot" | "users" | "settings" | "plus" | "dot" | "sparkle"
   | "alert" | "qr" | "addr" | "search" | "send" | "image" | "paperclip" | "x" | "check"
   | "chevD" | "arrowL" | "info" | "phone" | "link" | "trash" | "doc" | "sheet" | "edit"
-  | "camera" | "userPlus" | "userCheck" | "handoff" | "clock" | "download" | "globe" | "eye" | "eyeOff" | "logout" | "bellOff" | "bell";
+  | "camera" | "userPlus" | "userCheck" | "handoff" | "clock" | "download" | "globe" | "eye" | "eyeOff" | "logout" | "bellOff" | "bell" | "smile";
 
 const P: Record<IconName, JSX.Element> = {
   dashboard: <><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></>,
@@ -45,6 +45,7 @@ const P: Record<IconName, JSX.Element> = {
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
   bellOff: <><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8v7a2 2 0 0 1-2 2h9"/><path d="m18 8a6 6 0 0 0-9.33-5"/><path d="m2 2 20 20"/></>,
   bell: <><path d="M18 8A6 6 0 0 0 6 8v7a2 2 0 0 1-2 2h16a2 2 0 0 1-2-2V8z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></>,
+  smile: <><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></>,
 };
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, "name"> {
