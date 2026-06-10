@@ -60,6 +60,7 @@ export interface Conversation {
   readonly avatarImg?: string;
   readonly pinnedMessages?: any[];
   readonly metadata?: any;
+  readonly isMuted?: boolean;
 }
 
 export type MessageSender = "them" | "me" | "ai";

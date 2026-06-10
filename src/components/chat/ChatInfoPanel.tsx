@@ -14,7 +14,17 @@ import { useToast } from "@/providers/ToastProvider";
 type FriendState = "friend" | "none" | "pending";
 
 /** Right-hand info panel: contact + friend actions (direct) or group management. */
-export function ChatInfoPanel({ account, convo, vi }: { readonly account: Account; readonly convo: Conversation; readonly vi: boolean }): JSX.Element {
+export function ChatInfoPanel({
+  account,
+  convo,
+  vi,
+  onToggleMute,
+}: {
+  readonly account: Account;
+  readonly convo: Conversation;
+  readonly vi: boolean;
+  readonly onToggleMute: (isMuted: boolean) => void;
+}): JSX.Element {
   const isGroup = convo.type === "group";
 
   return (
@@ -27,6 +37,16 @@ export function ChatInfoPanel({ account, convo, vi }: { readonly account: Accoun
           <Row label={vi ? "Tự trả lời" : "Auto reply"} value={convo.auto ? (vi ? "Bật" : "On") : vi ? "Tắt" : "Off"} accent={convo.auto} />
           <Row label={vi ? "Mô hình AI" : "Model"} value={account.model} />
           <Row label={vi ? "AI tự gửi" : "Sent by AI"} value={`${account.aiToday} ${vi ? "hôm nay" : "today"}`} />
+        </div>
+      </section>
+
+      <section className="border-b border-border py-4">
+        <Label>{vi ? "Cài đặt hội thoại" : "Conversation settings"}</Label>
+        <div className="flex flex-col gap-2.5 font-sans">
+          <div className="flex items-center justify-between text-[12.5px]">
+            <span className="text-muted">{vi ? "Tắt thông báo" : "Mute notifications"}</span>
+            <Toggle on={Boolean(convo.isMuted)} onChange={onToggleMute} />
+          </div>
         </div>
       </section>
 

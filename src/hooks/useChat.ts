@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Conversation, Message, MessageKind } from "@/types";
 import { api } from "@/lib/api";
 import { useAppContext } from "@/providers/AppProvider";
@@ -20,16 +20,22 @@ export interface UseChatResult {
   sendTypingStatus: (isTyping: boolean) => void;
   pinMessage: (messageExternalId: string) => Promise<void>;
   unpinMessage: (topicId: string) => Promise<void>;
+  toggleMute: (id: string, isMuted: boolean) => Promise<void>;
 }
 
 export function useChat(convoKey: string, initialConvoId?: string): UseChatResult {
-  const { accounts, socket } = useAppContext();
+  const { accounts, socket, refreshAccounts } = useAppContext();
   const account = useMemo(() => accounts.find((a) => a.id === convoKey), [accounts, convoKey]);
   const botExternalId = account?.phone;
 
   const [conversations, setConversations] = useState<ReadonlyArray<Conversation>>([]);
   const [activeId, setActiveId] = useState<string | undefined>(initialConvoId);
   const [messages, setMessages] = useState<ReadonlyArray<Message>>([]);
+
+  const conversationsRef = useRef(conversations);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   const active = useMemo(
     () => conversations.find((c) => c.id === activeId),
@@ -78,6 +84,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           members: c.threadType === "group" ? ((c.metadata as any)?.memberCount ?? 0) : undefined,
           avatarImg: c.avatar || undefined,
           pinnedMessages: (c.metadata as any)?.pinnedMessages || [],
+          isMuted: Boolean((c.metadata as any)?.isMuted),
         };
       });
       setConversations(mappedConvos);
@@ -219,6 +226,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
   }, [botExternalId, activeId]);
 
   useEffect(() => {
+    setMessages([]);
     if (activeId && botExternalId) {
       api.get(`/bots/zalo/${botExternalId}/conversations/${activeId}`)
         .then(() => {
@@ -240,6 +248,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
           setConversations((prev) =>
             prev.map((c) => (c.id === activeId ? { ...c, unread: 0 } : c))
           );
+          void refreshAccounts();
         })
         .catch((err) => console.error("Failed to mark conversation as read:", err));
     }
@@ -252,6 +261,24 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
       if (data.messageId && String(data.messageId).startsWith("group-update-")) {
         void fetchConversations();
         return;
+      }
+
+      if (data.direction === "in") {
+        const convo = conversationsRef.current.find((c: Conversation) => c.id === String(data.conversationId));
+        const isMuted = convo ? convo.isMuted : false;
+        const isCurrentActive = activeId && String(data.conversationId) === activeId;
+        const isTabFocused = typeof document !== "undefined" && document.hasFocus();
+        const isSilenced = isMuted || (isCurrentActive && isTabFocused);
+        
+        if (!isSilenced) {
+          playNotificationSound();
+          const senderName = convo?.name || "Zalo User";
+          const msgText = data.text || (data.type === "image" ? "[Hình ảnh]" : "[Tin nhắn]");
+          showDesktopNotification(senderName, {
+            body: msgText,
+            icon: convo?.avatarImg || undefined,
+          });
+        }
       }
 
       if (activeId && String(data.conversationId) === activeId) {
@@ -535,6 +562,7 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
 
   const selectConversation = useCallback((id: string) => {
     setActiveId(id);
+    setMessages([]);
   }, []);
 
   const pinMessage = useCallback(async (messageExternalId: string) => {
@@ -566,6 +594,19 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     }
   }, [botExternalId, active, fetchConversations]);
 
+  const toggleMute = useCallback(async (id: string, isMuted: boolean) => {
+    if (!botExternalId) return;
+    try {
+      await api.patch(`/bots/zalo/${botExternalId}/conversations/${id}/mute`, { isMuted });
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, isMuted, metadata: { ...c.metadata, isMuted } } : c))
+      );
+      void refreshAccounts();
+    } catch (err) {
+      console.error("Failed to toggle mute:", err);
+    }
+  }, [botExternalId, refreshAccounts]);
+
   return {
     conversations,
     active,
@@ -581,5 +622,57 @@ export function useChat(convoKey: string, initialConvoId?: string): UseChatResul
     sendTypingStatus,
     pinMessage,
     unpinMessage,
+    toggleMute,
   };
+}
+
+function playNotificationSound() {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+    
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "sine";
+    osc1.frequency.setValueAtTime(523.25, now);
+    gain1.gain.setValueAtTime(0, now);
+    gain1.gain.linearRampToValueAtTime(0.15, now + 0.05);
+    gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
+    
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(659.25, now + 0.07);
+    gain2.gain.setValueAtTime(0, now + 0.07);
+    gain2.gain.linearRampToValueAtTime(0.15, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+    
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    
+    osc1.start(now);
+    osc1.stop(now + 0.4);
+    osc2.start(now + 0.07);
+    osc2.stop(now + 0.55);
+  } catch (e) {
+    console.warn("Failed to play synthesized sound:", e);
+  }
+}
+
+function showDesktopNotification(title: string, options: NotificationOptions) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "granted") {
+    new Notification(title, options);
+  } else if (Notification.permission !== "denied") {
+    Notification.requestPermission().then((permission) => {
+      if (permission === "granted") {
+        new Notification(title, options);
+      }
+    });
+  }
 }

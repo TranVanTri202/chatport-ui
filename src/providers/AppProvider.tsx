@@ -69,6 +69,10 @@ export function AppProvider({ children }: { readonly children: ReactNode }): JSX
       void refreshAccounts();
     });
 
+    s.on("message:new", () => {
+      void refreshAccounts();
+    });
+
     setSocket(s);
 
     return () => {
@@ -105,7 +109,7 @@ export function AppProvider({ children }: { readonly children: ReactNode }): JSX
           },
           status: bot.status === "active" ? "online" : bot.status === "expired" ? "expired" : "offline",
           auto: bot.autoReplyEnabled,
-          unread: 0,
+          unread: bot.unread ?? 0,
           today: bot.requestUsed ?? 0,
           aiToday: bot.requestUsed ?? 0,
           lastActive: "now",
@@ -173,6 +177,18 @@ export function AppProvider({ children }: { readonly children: ReactNode }): JSX
   const setPreference = useCallback(<K extends keyof Preferences>(key: K, value: Preferences[K]) => {
     setPreferences((prev) => ({ ...prev, [key]: value }));
   }, []);
+
+  const totalUnread = useMemo(() => accounts.reduce((sum, a) => sum + a.unread, 0), [accounts]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const baseTitle = "ZaloHub — Multi-account Manager";
+    if (totalUnread > 0) {
+      document.title = `(${totalUnread}) ${baseTitle}`;
+    } else {
+      document.title = baseTitle;
+    }
+  }, [totalUnread]);
 
   const value = useMemo<AppState>(
     () => ({ authed, accounts, preferences, socket, setAuthed, toggleAuto, reloginAccount, removeAccount, setPreference, refreshAccounts }),

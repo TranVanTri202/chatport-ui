@@ -40,10 +40,11 @@ export function ChatView({ initialAccountId, initialConvoId }: ChatViewProps): J
 function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { readonly account: Account; readonly accounts: ReadonlyArray<Account>; readonly vi: boolean; readonly onSwitch: (id: string) => void; readonly initialConvoId?: string }): JSX.Element {
   const { showToast } = useToast();
   const { socket } = useAppContext();
-  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, sendVoice, sendVideo, reactToMessage, recallMessage, sendTypingStatus, pinMessage, unpinMessage } = useChat(account.convos, initialConvoId);
+  const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, sendVoice, sendVideo, reactToMessage, recallMessage, sendTypingStatus, pinMessage, unpinMessage, toggleMute } = useChat(account.convos, initialConvoId);
 
   const { friends, requests, sentRequests, accept, decline, cancelSent, remove, sendRequest, changeAlias, removeAlias } = useContacts(account.phone);
   const [profileModal, setProfileModal] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [unfriendConfirm, setUnfriendConfirm] = useState(false);
   const [aliasModal, setAliasModal] = useState(false);
   const [aliasDraft, setAliasDraft] = useState("");
@@ -399,15 +400,20 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
           setForwardNote("");
           setForwardModal(true);
         }}
+        onToggleMute={(muted) => convo && toggleMute(convo.id, muted)}
       />
-      {convo ? <ChatInfoPanel account={account} convo={convo} vi={vi} /> : <div className="border-l border-border bg-surface-0" />}
+      {convo ? <ChatInfoPanel account={account} convo={convo} vi={vi} onToggleMute={(muted) => toggleMute(convo.id, muted)} /> : <div className="border-l border-border bg-surface-0" />}
 
       {profileModal && convo && convo.type === "direct" && (
         <Modal title={vi ? "Thông tin tài khoản" : "Account Info"} onClose={() => setProfileModal(false)} noPadding width={390}>
           {matchingFriend?.cover ? (
-            <div className="h-[125px] w-full relative overflow-hidden bg-surface-3">
+            <button 
+              onClick={() => matchingFriend.cover && setLightboxImage(matchingFriend.cover)}
+              title={vi ? "Click để xem ảnh bìa lớn" : "Click to view full cover"}
+              className="h-[125px] w-full relative overflow-hidden bg-surface-3 cursor-zoom-in hover:brightness-95 active:brightness-90 transition-all outline-none border-none block p-0"
+            >
               <img src={matchingFriend.cover} alt="Cover" className="w-full h-full object-cover" />
-            </div>
+            </button>
           ) : (
             <div 
               className="h-[125px] w-full relative" 
@@ -417,9 +423,14 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
             />
           )}
           <div className="relative px-5 pb-4 bg-surface">
-            <div className="absolute -top-[45px] left-5 border-[3.5px] border-surface bg-surface rounded-full shadow-md overflow-hidden">
+            <button 
+              onClick={() => convo.avatarImg && setLightboxImage(convo.avatarImg)}
+              disabled={!convo.avatarImg}
+              title={convo.avatarImg ? (vi ? "Click để xem ảnh đại diện lớn" : "Click to view full avatar") : undefined}
+              className={`absolute -top-[45px] left-5 border-[3.5px] border-surface bg-surface rounded-full shadow-md overflow-hidden outline-none z-10 ${convo.avatarImg ? "cursor-zoom-in hover:scale-105 active:scale-[0.98] transition-all" : "cursor-default"}`}
+            >
               <Avatar spec={{ hue: convo.hue, initials: convo.initials, img: convo.avatarImg }} size={74} />
-            </div>
+            </button>
             <div className="pt-10 flex flex-col">
               <div className="flex items-center justify-between">
                 <div className="flex flex-col min-w-0">
@@ -960,6 +971,26 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
           </div>
         </Modal>
       )}
+
+      {lightboxImage && (
+        <div 
+          onClick={() => setLightboxImage(null)}
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 p-4 backdrop-blur-md cursor-zoom-out animate-fade-in"
+        >
+          <button 
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-4 right-4 grid h-10 w-10 place-items-center rounded-full bg-black/40 border border-white/10 text-white/70 hover:text-white transition-colors"
+          >
+            <Icon name="x" size={20} />
+          </button>
+          <img 
+            src={lightboxImage} 
+            alt="Full view" 
+            className="max-h-[92vh] max-w-[92vw] object-contain rounded-lg shadow-2xl select-none animate-scale-up"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1020,17 +1051,26 @@ function ConvoRow({ convo, active, onClick }: { readonly convo: Conversation; re
           <span className="flex-1 truncate text-[13.5px] font-semibold">{convo.name}</span>
           <span className="shrink-0 text-[11px] text-muted">{convo.time}</span>
         </div>
-        <div className="mt-0.5 flex items-center gap-1.5">
+        <div className="mt-0.5 flex items-center gap-1.5 font-sans">
           <span className={`flex-1 truncate text-[12.5px] ${convo.unread ? "text-text" : "text-muted"}`}>{convo.last}</span>
           {convo.auto ? <Icon name="bot" size={13} className="shrink-0 text-accent" /> : null}
-          {convo.unread > 0 ? <span className="grid h-[17px] min-w-[17px] place-items-center rounded-full bg-accent px-1.5 text-[10.5px] font-semibold text-[#06140c]">{convo.unread}</span> : null}
+          {convo.isMuted ? <Icon name="bellOff" size={13} className="shrink-0 text-muted/50" /> : null}
+          {convo.unread > 0 ? (
+            <span className={`grid h-[17px] min-w-[17px] place-items-center rounded-full px-1.5 text-[10.5px] font-semibold ${
+              convo.isMuted 
+                ? "bg-surface-3 border border-border text-muted" 
+                : "bg-accent text-[#06140c]"
+            }`}>
+              {convo.unread}
+            </span>
+          ) : null}
         </div>
       </div>
     </button>
   );
 }
 
-function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage, onRecallMessage, onSendTypingStatus, onPinMessage, onUnpinMessage, isFriend = false, isSentRequest = false, isReceivedRequest = false, onAddFriend, onCancelRequest, onAcceptRequest, onDeclineRequest, onAvatarClick, onForwardClick }: {
+function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage, onRecallMessage, onSendTypingStatus, onPinMessage, onUnpinMessage, isFriend = false, isSentRequest = false, isReceivedRequest = false, onAddFriend, onCancelRequest, onAcceptRequest, onDeclineRequest, onAvatarClick, onForwardClick, onToggleMute }: {
   readonly convo: Conversation | undefined; readonly messages: ReadonlyArray<Message>;
   readonly expired: boolean; readonly vi: boolean;
   readonly onSendText: (t: string) => void; readonly onSendImage: (f: File, caption?: string) => void; readonly onSendFile: (f: File) => void;
@@ -1048,6 +1088,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
   readonly onDeclineRequest?: () => void;
   readonly onAvatarClick?: () => void;
   readonly onForwardClick?: (m: Message) => void;
+  readonly onToggleMute?: (muted: boolean) => void;
 }): JSX.Element {
   void onUnpinMessage;
   const [draft, setDraft] = useState("");
@@ -1240,6 +1281,17 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
           <span className={`text-xs font-semibold ${auto && !expired ? "text-accent" : "text-muted"}`}>{vi ? "Tự trả lời" : "Auto"}</span>
           <Toggle on={auto && !expired} onChange={setAuto} />
         </div>
+        <button 
+          onClick={() => onToggleMute?.(!convo.isMuted)} 
+          title={convo.isMuted ? (vi ? "Bật âm báo" : "Unmute") : (vi ? "Tắt âm báo" : "Mute")}
+          className={`grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border transition-colors cursor-pointer ${
+            convo.isMuted 
+              ? "bg-[rgba(217,104,95,0.15)] border-[rgba(217,104,95,0.3)] text-danger hover:bg-[rgba(217,104,95,0.25)]" 
+              : "text-muted hover:text-text hover:bg-surface-2"
+          }`}
+        >
+          <Icon name={convo.isMuted ? "bellOff" : "bell"} size={16} />
+        </button>
         <button onClick={() => setSearchOn((v) => !v)} className={`grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border ${searchOn ? "bg-accent-dim text-accent" : "text-muted hover:text-text"}`}><Icon name="search" size={16} /></button>
       </div>
 
