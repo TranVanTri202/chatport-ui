@@ -17,8 +17,8 @@ export function ContactsView(): JSX.Element {
   const vi = preferences.lang === "vi";
   const [selected, setSelected] = useState(accounts[0]?.id ?? "");
   const account = accounts.find((a) => a.id === selected) ?? accounts[0];
-  const { grouped, requests, sentRequests, friends, query, setQuery, accept, decline, cancelSent, remove } = useContacts(account?.phone);
-  const [tab, setTab] = useState<"friends" | "requests" | "sent-requests">("friends");
+  const { grouped, requests, sentRequests, recommendations, friends, query, setQuery, accept, decline, cancelSent, remove, sendRequest } = useContacts(account?.phone);
+  const [tab, setTab] = useState<"friends" | "requests" | "sent-requests" | "recommendations">("friends");
   const [addModal, setAddModal] = useState(false);
   const [unfriendTarget, setUnfriendTarget] = useState<any | null>(null);
   const handleStartChat = async (friend: any) => {
@@ -65,13 +65,16 @@ export function ContactsView(): JSX.Element {
             <span className="text-[13px] text-muted">{account.name}</span>
           </div>
           <div className="my-2 flex items-center gap-3 pt-4">
-            <div className="inline-flex gap-0.5 rounded-[10px] border border-border bg-surface-2 p-[3px]">
+            <div className="inline-flex gap-0.5 rounded-[10px] border border-border bg-surface-2 p-[3px] flex-wrap md:flex-nowrap">
               <button onClick={() => setTab("friends")} className={`rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "friends" ? "bg-surface-3 text-text" : "text-muted"}`}>{vi ? "Bạn bè" : "Friends"} · {friends.length}</button>
               <button onClick={() => setTab("requests")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "requests" ? "bg-surface-3 text-text" : "text-muted"}`}>
                 {vi ? "Lời mời nhận" : "Received"} {requests.length > 0 ? <Badge n={requests.length} /> : null}
               </button>
               <button onClick={() => setTab("sent-requests")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "sent-requests" ? "bg-surface-3 text-text" : "text-muted"}`}>
                 {vi ? "Lời mời đã gửi" : "Sent"} {sentRequests.length > 0 ? <Badge n={sentRequests.length} /> : null}
+              </button>
+              <button onClick={() => setTab("recommendations")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "recommendations" ? "bg-surface-3 text-text" : "text-muted"}`}>
+                {vi ? "Gợi ý kết bạn" : "Suggestions"} {recommendations.length > 0 ? <Badge n={recommendations.length} /> : null}
               </button>
             </div>
             {tab === "friends" ? (
@@ -133,7 +136,7 @@ export function ContactsView(): JSX.Element {
                   ))}
                 </div>
               )
-            ) : (
+            ) : tab === "sent-requests" ? (
               sentRequests.length === 0 ? (
                 <Empty text={vi ? "Không có lời mời kết bạn đã gửi." : "No sent requests."} />
               ) : (
@@ -147,6 +150,25 @@ export function ContactsView(): JSX.Element {
                       </div>
                       <span className="text-xs text-muted font-medium italic mr-2">{vi ? "Đang chờ phản hồi" : "Pending response"}</span>
                       <Button size="sm" variant="ghost" onClick={() => cancelSent(r)}>{vi ? "Thu hồi" : "Revoke"}</Button>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              recommendations.length === 0 ? (
+                <Empty text={vi ? "Không có gợi ý kết bạn." : "No suggestions."} />
+              ) : (
+                <div className="flex flex-col gap-2.5 pt-2.5">
+                  {recommendations.map((r, i) => (
+                    <div key={`${r.name}-${i}`} className="flex items-center gap-3 rounded-card border border-border bg-surface p-[13px_16px]">
+                      <Avatar spec={{ hue: r.hue, initials: r.initials, img: r.avatar }} size={44} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold">{r.name}</div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted"><Icon name="userPlus" size={12} /> {r.source}</div>
+                      </div>
+                      <Button size="sm" icon="plus" onClick={async () => {
+                        await sendRequest(r.externalId!, vi ? "Xin chào! Kết bạn với mình nhé." : "Hi! Let's connect.");
+                      }}>{vi ? "Kết bạn" : "Add Friend"}</Button>
                     </div>
                   ))}
                 </div>
