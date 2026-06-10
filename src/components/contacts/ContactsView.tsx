@@ -64,21 +64,21 @@ export function ContactsView(): JSX.Element {
             <Avatar spec={account.avatar} size={22} />
             <span className="text-[13px] text-muted">{account.name}</span>
           </div>
-          <div className="my-2 flex items-center gap-3 pt-4">
-            <div className="inline-flex gap-0.5 rounded-[10px] border border-border bg-surface-2 p-[3px] flex-wrap md:flex-nowrap">
-              <button onClick={() => setTab("friends")} className={`rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "friends" ? "bg-surface-3 text-text" : "text-muted"}`}>{vi ? "Bạn bè" : "Friends"} · {friends.length}</button>
-              <button onClick={() => setTab("requests")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "requests" ? "bg-surface-3 text-text" : "text-muted"}`}>
+          <div className="my-2 flex flex-col gap-3 pt-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="inline-flex gap-0.5 rounded-[10px] border border-border bg-surface-2 p-[3px] overflow-x-auto no-scrollbar flex-nowrap max-w-full shrink-0">
+              <button onClick={() => setTab("friends")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium shrink-0 whitespace-nowrap ${tab === "friends" ? "bg-surface-3 text-text" : "text-muted"}`}>{vi ? "Bạn bè" : "Friends"} · {friends.length}</button>
+              <button onClick={() => setTab("requests")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium shrink-0 whitespace-nowrap ${tab === "requests" ? "bg-surface-3 text-text" : "text-muted"}`}>
                 {vi ? "Lời mời nhận" : "Received"} {requests.length > 0 ? <Badge n={requests.length} /> : null}
               </button>
-              <button onClick={() => setTab("sent-requests")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "sent-requests" ? "bg-surface-3 text-text" : "text-muted"}`}>
+              <button onClick={() => setTab("sent-requests")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium shrink-0 whitespace-nowrap ${tab === "sent-requests" ? "bg-surface-3 text-text" : "text-muted"}`}>
                 {vi ? "Lời mời đã gửi" : "Sent"} {sentRequests.length > 0 ? <Badge n={sentRequests.length} /> : null}
               </button>
-              <button onClick={() => setTab("recommendations")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium ${tab === "recommendations" ? "bg-surface-3 text-text" : "text-muted"}`}>
+              <button onClick={() => setTab("recommendations")} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium shrink-0 whitespace-nowrap ${tab === "recommendations" ? "bg-surface-3 text-text" : "text-muted"}`}>
                 {vi ? "Gợi ý kết bạn" : "Suggestions"} {recommendations.length > 0 ? <Badge n={recommendations.length} /> : null}
               </button>
             </div>
             {tab === "friends" ? (
-              <div className="flex items-center gap-2 flex-1 max-w-[420px]">
+              <div className="flex items-center gap-2 flex-1 max-w-[420px] w-full lg:w-auto">
                 <SearchBox className="flex-1" value={query} onChange={(e) => setQuery(e.target.value)} onClear={() => setQuery("")} placeholder={vi ? "Tìm bạn bè…" : "Search…"} />
                 <Button size="sm" icon="plus" onClick={() => setAddModal(true)}>{vi ? "Tìm qua SĐT" : "Search by Phone"}</Button>
               </div>

@@ -34,7 +34,7 @@ export function Button({
 }: ButtonProps): JSX.Element {
   return (
     <button
-      className={`inline-flex items-center justify-center font-sans transition active:scale-[.97] ${VARIANT[variant]} ${SIZE[size]} ${className}`}
+      className={`inline-flex items-center justify-center font-sans transition active:scale-[.97] whitespace-nowrap shrink-0 ${VARIANT[variant]} ${SIZE[size]} ${className}`}
       {...rest}
     >
       {icon ? <Icon name={icon} size={size === "sm" ? 14 : 16} /> : null}

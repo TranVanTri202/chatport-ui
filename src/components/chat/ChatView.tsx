@@ -57,6 +57,65 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
   const [newGroupAvatarPreview, setNewGroupAvatarPreview] = useState<string | null>(null);
   const createGroupFileRef = useRef<HTMLInputElement>(null);
 
+  const [forwardModal, setForwardModal] = useState(false);
+  const [messageToForward, setMessageToForward] = useState<Message | null>(null);
+  const [forwardSearch, setForwardSearch] = useState("");
+  const [forwardSelected, setForwardSelected] = useState<string[]>([]);
+  const [forwarding, setForwarding] = useState(false);
+  const [forwardTab, setForwardTab] = useState<"recent" | "groups" | "friends">("recent");
+  const [forwardNote, setForwardNote] = useState("");
+
+  const filteredConversations = useMemo(() => {
+    return conversations.filter((c) => {
+      if (forwardTab === "groups" && c.type !== "group") return false;
+      if (forwardTab === "friends" && c.type !== "direct") return false;
+      const q = forwardSearch.trim().toLowerCase();
+      if (!q) return true;
+      return c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q));
+    });
+  }, [conversations, forwardTab, forwardSearch]);
+
+  const handleForwardSubmit = async () => {
+    if (!messageToForward || forwardSelected.length === 0) return;
+    setForwarding(true);
+    try {
+      const selectedConvos = conversations.filter((c) => forwardSelected.includes(c.id));
+      await Promise.all(
+        selectedConvos.map(async (c) => {
+          // 1. Forward the message
+          await api.post("/messages/forward", {
+            botExternalId: account.phone,
+            messageExternalId: messageToForward.messageExternalId,
+            targetThreadId: c.phone,
+            targetThreadType: c.type === "group" ? "group" : "user",
+          });
+
+          // 2. Send the optional extra note
+          if (forwardNote.trim()) {
+            await api.post("/messages/send/text", {
+              botExternalId: account.phone,
+              threadId: c.phone,
+              threadType: c.type === "group" ? "group" : "user",
+              text: forwardNote.trim(),
+            });
+          }
+        })
+      );
+      setForwardModal(false);
+      setMessageToForward(null);
+      setForwardSearch("");
+      setForwardSelected([]);
+      setForwardNote("");
+      setForwardTab("recent");
+      showToast(vi ? "Đã chia sẻ tin nhắn thành công!" : "Successfully shared message!", "success");
+    } catch (err) {
+      console.error("Failed to forward message:", err);
+      showToast(vi ? `Lỗi chia sẻ: ${(err as Error).message}` : `Failed to share message: ${(err as Error).message}`, "error");
+    } finally {
+      setForwarding(false);
+    }
+  };
+
   const handleNewGroupAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -331,6 +390,15 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
         onAcceptRequest={handleAcceptRequest}
         onDeclineRequest={handleDeclineRequest}
         onAvatarClick={() => setProfileModal(true)}
+        onForwardClick={(m: Message) => {
+          setMessageToForward(m);
+          setForwardSelected([]);
+          setForwardSearch("");
+          setForwarding(false);
+          setForwardTab("recent");
+          setForwardNote("");
+          setForwardModal(true);
+        }}
       />
       {convo ? <ChatInfoPanel account={account} convo={convo} vi={vi} /> : <div className="border-l border-border bg-surface-0" />}
 
@@ -690,6 +758,208 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
           </div>
         </Modal>
       )}
+
+      {forwardModal && messageToForward && (
+        <Modal
+          title={vi ? "Chia sẻ" : "Share"}
+          onClose={() => {
+            setForwardModal(false);
+            setMessageToForward(null);
+            setForwardSearch("");
+            setForwardSelected([]);
+            setForwardNote("");
+            setForwardTab("recent");
+          }}
+          width={680}
+        >
+          <div className="flex flex-col gap-4 max-h-[78vh] min-h-[500px]">
+            {/* Search Input */}
+            <SearchBox
+              value={forwardSearch}
+              onChange={(e) => setForwardSearch(e.target.value)}
+              onClear={() => setForwardSearch("")}
+              placeholder={vi ? "Tìm kiếm..." : "Search..."}
+            />
+
+            {/* Filter Tabs */}
+            <div className="flex items-center justify-between border-b border-border pb-1">
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setForwardTab("recent")}
+                  className={`pb-2 text-[13.5px] font-semibold relative transition-colors ${
+                    forwardTab === "recent" ? "text-accent" : "text-muted hover:text-text"
+                  }`}
+                >
+                  {vi ? "Gần đây" : "Recent"}
+                  {forwardTab === "recent" && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setForwardTab("groups")}
+                  className={`pb-2 text-[13.5px] font-semibold relative transition-colors ${
+                    forwardTab === "groups" ? "text-accent" : "text-muted hover:text-text"
+                  }`}
+                >
+                  {vi ? "Nhóm trò chuyện" : "Chat groups"}
+                  {forwardTab === "groups" && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setForwardTab("friends")}
+                  className={`pb-2 text-[13.5px] font-semibold relative transition-colors ${
+                    forwardTab === "friends" ? "text-accent" : "text-muted hover:text-text"
+                  }`}
+                >
+                  {vi ? "Bạn bè" : "Friends"}
+                  {forwardTab === "friends" && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Main Split Section */}
+            <div className="grid grid-cols-[1fr_240px] border border-border rounded-xl min-h-[260px] max-h-[300px] overflow-hidden bg-surface-1">
+              {/* Left Column: List of items */}
+              <div className="overflow-y-auto p-1 divide-y divide-border/20">
+                {filteredConversations.map((c) => {
+                  const isChecked = forwardSelected.includes(c.id);
+                  return (
+                    <label
+                      key={c.id}
+                      className="flex items-center gap-3 p-2.5 hover:bg-surface-2 cursor-pointer select-none transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {
+                          if (isChecked) {
+                            setForwardSelected((prev) => prev.filter((id) => id !== c.id));
+                          } else {
+                            setForwardSelected((prev) => [...prev, c.id]);
+                          }
+                        }}
+                        className="accent-accent h-4 w-4 rounded border-border"
+                      />
+                      <Avatar spec={{ hue: c.hue, initials: c.initials, img: c.avatarImg }} size={32} />
+                      <span className="text-[13px] font-semibold text-text truncate max-w-[220px]">{c.name}</span>
+                    </label>
+                  );
+                })}
+                {filteredConversations.length === 0 && (
+                  <div className="p-8 text-center text-xs italic text-muted">
+                    {vi ? "Không tìm thấy kết quả." : "No results found."}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Selected list summary */}
+              <div className="border-l border-border bg-surface-2 flex flex-col min-h-0">
+                <div className="p-2 border-b border-border flex items-center justify-between text-[11.5px] font-semibold text-muted">
+                  <span>
+                    {vi
+                      ? `Đã chọn: ${forwardSelected.length}/100`
+                      : `Selected: ${forwardSelected.length}/100`}
+                  </span>
+                  {forwardSelected.length > 0 && (
+                    <button
+                      onClick={() => setForwardSelected([])}
+                      className="text-accent hover:underline text-[11.5px] font-semibold"
+                    >
+                      {vi ? "Xóa" : "Clear"}
+                    </button>
+                  )}
+                </div>
+                <div className="flex-1 overflow-y-auto p-1.5 flex flex-col gap-1.5 min-h-0">
+                  {conversations
+                    .filter((c) => forwardSelected.includes(c.id))
+                    .map((c) => (
+                      <div
+                        key={c.id}
+                        className="flex items-center justify-between gap-1.5 p-1 rounded-lg hover:bg-surface-3 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Avatar spec={{ hue: c.hue, initials: c.initials, img: c.avatarImg }} size={24} />
+                          <span className="text-[12px] font-medium text-text truncate max-w-[130px]">{c.name}</span>
+                        </div>
+                        <button
+                          onClick={() => setForwardSelected((prev) => prev.filter((id) => id !== c.id))}
+                          className="text-muted hover:text-text p-0.5 transition-colors"
+                        >
+                          <Icon name="x" size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  {forwardSelected.length === 0 && (
+                    <div className="flex-1 flex items-center justify-center p-4 text-center text-[11.5px] italic text-muted">
+                      {vi ? "Chưa chọn người nhận" : "No recipients selected"}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Message Preview */}
+            <div className="rounded-xl border border-border bg-surface-2 p-3 flex flex-col gap-1.5">
+              <span className="text-[11px] font-bold text-muted uppercase tracking-wider">
+                {vi ? "Chia sẻ tin nhắn" : "Share message"}
+              </span>
+              <div className="text-[12.5px] text-muted max-h-[60px] overflow-y-auto whitespace-pre-wrap font-sans italic leading-relaxed">
+                {messageToForward.kind === "image" ? (
+                  <span className="inline-flex items-center gap-1.5"><Icon name="image" size={13} /> {vi ? "[Hình ảnh]" : "[Image]"}</span>
+                ) : messageToForward.kind === "video" ? (
+                  <span className="inline-flex items-center gap-1.5"><Icon name="camera" size={13} /> {vi ? "[Video]" : "[Video]"}</span>
+                ) : messageToForward.kind === "file" ? (
+                  <span className="font-semibold inline-flex items-center gap-1.5"><Icon name="doc" size={13} /> {messageToForward.fileName}</span>
+                ) : messageToForward.kind === "voice" ? (
+                  <span className="inline-flex items-center gap-1.5"><Icon name="chat" size={13} /> {vi ? "[Tin nhắn thoại]" : "[Voice message]"}</span>
+                ) : messageToForward.kind === "location" ? (
+                  <span className="inline-flex items-center gap-1.5"><Icon name="addr" size={13} /> {messageToForward.location?.title || (vi ? "[Vị trí]" : "[Location]")}</span>
+                ) : messageToForward.kind === "card" ? (
+                  <span className="inline-flex items-center gap-1.5"><Icon name="users" size={13} /> {messageToForward.card?.title || (vi ? "[Danh thiếp]" : "[Contact Card]")}</span>
+                ) : (
+                  <span>{messageToForward.text}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Extra text input */}
+            <div className="flex flex-col gap-1">
+              <input
+                value={forwardNote}
+                onChange={(e) => setForwardNote(e.target.value)}
+                placeholder={vi ? "Nhập tin nhắn..." : "Enter message..."}
+                className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-text outline-none focus:border-accent transition-colors"
+              />
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-2.5 pt-2 border-t border-border">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setForwardModal(false);
+                  setMessageToForward(null);
+                  setForwardSearch("");
+                  setForwardSelected([]);
+                  setForwardNote("");
+                  setForwardTab("recent");
+                }}
+              >
+                {vi ? "Hủy" : "Cancel"}
+              </Button>
+              <Button
+                onClick={handleForwardSubmit}
+                disabled={forwarding || forwardSelected.length === 0}
+              >
+                {forwarding ? (vi ? "Đang chia sẻ…" : "Sharing…") : (vi ? "Chia sẻ" : "Share")}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -760,7 +1030,7 @@ function ConvoRow({ convo, active, onClick }: { readonly convo: Conversation; re
   );
 }
 
-function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage, onRecallMessage, onSendTypingStatus, onPinMessage, onUnpinMessage, isFriend = false, isSentRequest = false, isReceivedRequest = false, onAddFriend, onCancelRequest, onAcceptRequest, onDeclineRequest, onAvatarClick }: {
+function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onSendFile, onReactToMessage, onRecallMessage, onSendTypingStatus, onPinMessage, onUnpinMessage, isFriend = false, isSentRequest = false, isReceivedRequest = false, onAddFriend, onCancelRequest, onAcceptRequest, onDeclineRequest, onAvatarClick, onForwardClick }: {
   readonly convo: Conversation | undefined; readonly messages: ReadonlyArray<Message>;
   readonly expired: boolean; readonly vi: boolean;
   readonly onSendText: (t: string) => void; readonly onSendImage: (f: File, caption?: string) => void; readonly onSendFile: (f: File) => void;
@@ -777,6 +1047,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
   readonly onAcceptRequest?: () => void;
   readonly onDeclineRequest?: () => void;
   readonly onAvatarClick?: () => void;
+  readonly onForwardClick?: (m: Message) => void;
 }): JSX.Element {
   void onUnpinMessage;
   const [draft, setDraft] = useState("");
@@ -1120,6 +1391,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
               onReact={onReactToMessage}
               onRecall={onRecallMessage}
               onPin={onPinMessage}
+              onForward={onForwardClick}
             />
           );
         })}
@@ -1173,7 +1445,7 @@ function ChatThread({ convo, messages, expired, vi, onSendText, onSendImage, onS
   );
 }
 
-function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin }: { readonly message: Message; readonly prev: Message | undefined; readonly vi: boolean; readonly highlight: string; readonly onReact: (messageExternalId: string, reactIcon: string) => Promise<void>; readonly onRecall: (messageExternalId: string) => Promise<void>; readonly onPin: (messageExternalId: string) => Promise<void> }): JSX.Element {
+function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin, onForward }: { readonly message: Message; readonly prev: Message | undefined; readonly vi: boolean; readonly highlight: string; readonly onReact: (messageExternalId: string, reactIcon: string) => Promise<void>; readonly onRecall: (messageExternalId: string) => Promise<void>; readonly onPin: (messageExternalId: string) => Promise<void>; readonly onForward?: (m: Message) => void }): JSX.Element {
   void onPin;
   const mine = message.from === "me" || message.from === "ai";
   const isAI = message.from === "ai";
@@ -1476,16 +1748,22 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin }: { re
           >
             <button onClick={() => setContextMenu(null)} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
               <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.95v6.05c0 1.25.75 2 2 2h3v1c0 3.22-1.78 5.22-5 6.22v1.78zm12 0c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2h-4c-1.25 0-2 .75-2 1.95v6.05c0 1.25.75 2 2 2h3v1c0 3.22-1.78 5.22-5 6.22v1.78z" />
               </svg>
               <span>{vi ? "Trả lời" : "Reply"}</span>
             </button>
             
-            <button onClick={() => setContextMenu(null)} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
+            <button
+              onClick={() => {
+                setContextMenu(null);
+                onForward?.(message);
+              }}
+              className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors"
+            >
               <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 10.742l4.61 2.305m0 0l4.61-2.305m-4.61 2.305a3.5 3.5 0 11-7 0 3.5 3.5 0 017 0zm0 0a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm0 0a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
               </svg>
-              <span>{vi ? "Chia sẻ" : "Share"}</span>
+              <span>{vi ? "Chuyển tiếp" : "Forward"}</span>
             </button>
 
             {message.text && (
@@ -1511,7 +1789,7 @@ function Bubble({ message, prev, vi, highlight, onReact, onRecall, onPin }: { re
             {mine && !message.isRecalled && (
               <button onClick={handleRecallClick} className="flex items-center gap-2.5 w-full text-left rounded-md px-2 py-1.5 text-danger hover:bg-danger/10 transition-colors">
                 <svg className="w-4 h-4 text-danger" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5" />
                 </svg>
                 <span className="font-semibold">{vi ? "Thu hồi" : "Recall"}</span>
               </button>
