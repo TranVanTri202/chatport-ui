@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Be_Vietnam_Pro, Plus_Jakarta_Sans } from "next/font/google";
 import { AppProvider } from "@/providers/AppProvider";
+import { ToastProvider } from "@/providers/ToastProvider";
 import { AppShell } from "@/components/common/AppShell";
 import "./globals.css";
 
@@ -26,7 +27,9 @@ export default function RootLayout({ children }: { readonly children: React.Reac
     <html lang="vi" className={`${display.variable} ${sans.variable}`}>
       <body>
         <AppProvider>
-          <AppShell>{children}</AppShell>
+          <ToastProvider>
+            <AppShell>{children}</AppShell>
+          </ToastProvider>
         </AppProvider>
       </body>
     </html>

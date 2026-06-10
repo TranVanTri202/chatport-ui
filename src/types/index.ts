@@ -59,6 +59,7 @@ export interface Conversation {
   /** Runtime overrides (renamed group, new group photo). */
   readonly avatarImg?: string;
   readonly pinnedMessages?: any[];
+  readonly metadata?: any;
 }
 
 export type MessageSender = "them" | "me" | "ai";

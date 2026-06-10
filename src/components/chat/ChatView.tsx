@@ -16,6 +16,8 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { Toggle } from "@/components/ui/Toggle";
 import { Modal } from "@/components/ui/Modal";
 import { ChatInfoPanel } from "./ChatInfoPanel";
+import { api } from "@/lib/api";
+import { useToast } from "@/providers/ToastProvider";
 
 interface ChatViewProps {
   readonly initialAccountId?: string;
@@ -36,6 +38,7 @@ export function ChatView({ initialAccountId, initialConvoId }: ChatViewProps): J
 }
 
 function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { readonly account: Account; readonly accounts: ReadonlyArray<Account>; readonly vi: boolean; readonly onSwitch: (id: string) => void; readonly initialConvoId?: string }): JSX.Element {
+  const { showToast } = useToast();
   const { socket } = useAppContext();
   const { conversations, active, messages, selectConversation, sendText, sendImage, sendFile, sendVoice, sendVideo, reactToMessage, recallMessage, sendTypingStatus, pinMessage, unpinMessage } = useChat(account.convos, initialConvoId);
 
@@ -44,6 +47,59 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
   const [unfriendConfirm, setUnfriendConfirm] = useState(false);
   const [aliasModal, setAliasModal] = useState(false);
   const [aliasDraft, setAliasDraft] = useState("");
+
+  const [createGroupModal, setCreateGroupModal] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [createGroupSearch, setCreateGroupSearch] = useState("");
+  const [newGroupAvatar, setNewGroupAvatar] = useState<string | null>(null);
+  const [newGroupAvatarPreview, setNewGroupAvatarPreview] = useState<string | null>(null);
+  const createGroupFileRef = useRef<HTMLInputElement>(null);
+
+  const handleNewGroupAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      const dataUrl = `data:${f.type};name=${encodeURIComponent(f.name)};base64,${base64.split(",")[1]}`;
+      setNewGroupAvatar(dataUrl);
+      setNewGroupAvatarPreview(URL.createObjectURL(f));
+    };
+    reader.readAsDataURL(f);
+  };
+
+  const handleCreateGroup = async () => {
+    const trimmed = newGroupName.trim();
+    if (!trimmed) return;
+    if (selectedFriends.length === 0) return;
+    setCreatingGroup(true);
+    try {
+      const res = await api.post<{ id: number; title: string }>(
+        `/bots/zalo/${account.phone}/conversations/groups`,
+        {
+          name: trimmed,
+          members: selectedFriends,
+          ...(newGroupAvatar ? { avatar: newGroupAvatar } : {}),
+        }
+      );
+      setCreateGroupModal(false);
+      setNewGroupName("");
+      setSelectedFriends([]);
+      setCreateGroupSearch("");
+      setNewGroupAvatar(null);
+      setNewGroupAvatarPreview(null);
+      showToast(vi ? "Đã tạo nhóm thành công!" : "Successfully created group!", "success");
+      selectConversation(String(res.id));
+    } catch (err) {
+      console.error("Failed to create group:", err);
+      showToast(vi ? `Lỗi tạo nhóm: ${(err as Error).message}` : `Failed to create group: ${(err as Error).message}`, "error");
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
 
   const handleSendFile = useCallback((file: File) => {
     if (file.type.startsWith("video/")) {
@@ -227,7 +283,16 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
               </div>
             </>
           ) : null}
-          <SearchBox className="mb-2.5" value={query} onChange={(e) => setQuery(e.target.value)} onClear={() => setQuery("")} placeholder={vi ? "Tìm hội thoại…" : "Search chats…"} />
+          <div className="mb-2.5 flex gap-2">
+            <SearchBox className="flex-1" value={query} onChange={(e) => setQuery(e.target.value)} onClear={() => setQuery("")} placeholder={vi ? "Tìm hội thoại…" : "Search chats…"} />
+            <button
+              onClick={() => setCreateGroupModal(true)}
+              title={vi ? "Tạo nhóm mới" : "Create new group"}
+              className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[10px] border border-border bg-surface-2 text-muted hover:text-text hover:border-accent-border transition-colors cursor-pointer"
+            >
+              <Icon name="users" size={16} />
+            </button>
+          </div>
           <div className="inline-flex w-full gap-0.5 rounded-[10px] border border-border bg-surface-2 p-[3px]">
             {(["all", "direct", "group"] as const).map((k) => (
               <button key={k} onClick={() => setFilter(k)} className={`flex-1 rounded-lg px-2 py-1.5 text-[12.5px] font-medium ${filter === k ? "bg-surface-3 text-text" : "text-muted"}`}>
@@ -485,6 +550,142 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
                   {vi ? "Lưu" : "Save"}
                 </Button>
               </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {createGroupModal && (
+        <Modal
+          title={vi ? "Tạo nhóm mới" : "Create New Group"}
+          onClose={() => {
+            setCreateGroupModal(false);
+            setNewGroupName("");
+            setSelectedFriends([]);
+            setCreateGroupSearch("");
+            setNewGroupAvatar(null);
+            setNewGroupAvatarPreview(null);
+          }}
+          width={420}
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-4">
+              <div className="relative flex-shrink-0">
+                <Avatar
+                  spec={{
+                    hue: 200,
+                    initials: newGroupName
+                      ? newGroupName
+                          .split(" ")
+                          .filter(Boolean)
+                          .map((n) => n[0])
+                          .join("")
+                          .slice(0, 3)
+                          .toUpperCase()
+                      : "G",
+                    img: newGroupAvatarPreview || undefined,
+                  }}
+                  size={56}
+                />
+                <button
+                  type="button"
+                  onClick={() => createGroupFileRef.current?.click()}
+                  className="absolute -bottom-1 -right-1 grid h-[22px] w-[22px] place-items-center rounded-full border-[2px] border-surface-1 bg-accent text-[#0a1f16] cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+                  title={vi ? "Chọn ảnh nhóm" : "Select group avatar"}
+                >
+                  <Icon name="camera" size={10} />
+                </button>
+                <input
+                  ref={createGroupFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleNewGroupAvatarChange}
+                />
+              </div>
+              <div className="flex-grow flex flex-col gap-1.5">
+                <label className="text-[12px] font-bold uppercase tracking-wider text-muted">
+                  {vi ? "Tên nhóm" : "Group Name"}
+                </label>
+                <input
+                  autoFocus
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  placeholder={vi ? "Nhập tên nhóm…" : "Enter group name…"}
+                  className="w-full rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-[13.5px] text-text outline-none focus:border-accent transition-colors"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5 min-h-0">
+              <label className="text-[12px] font-bold uppercase tracking-wider text-muted">
+                {vi ? "Chọn thành viên" : "Select Members"} ({selectedFriends.length})
+              </label>
+              <SearchBox
+                value={createGroupSearch}
+                onChange={(e) => setCreateGroupSearch(e.target.value)}
+                onClear={() => setCreateGroupSearch("")}
+                placeholder={vi ? "Tìm bạn bè…" : "Search friends…"}
+                className="mb-2"
+              />
+              <div className="max-h-[200px] overflow-y-auto flex flex-col border border-border rounded-xl divide-y divide-border/30 bg-surface-1">
+                {friends
+                  .filter((f) => !createGroupSearch.trim() || f.name.toLowerCase().includes(createGroupSearch.toLowerCase()))
+                  .map((friend) => {
+                    const isChecked = selectedFriends.includes(friend.id);
+                    return (
+                      <label
+                        key={friend.id}
+                        className="flex items-center gap-3 p-2.5 hover:bg-surface-2 cursor-pointer select-none transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setSelectedFriends((prev) => prev.filter((id) => id !== friend.id));
+                            } else {
+                              setSelectedFriends((prev) => [...prev, friend.id]);
+                            }
+                          }}
+                          className="accent-accent h-4 w-4 rounded border-border"
+                        />
+                        <Avatar spec={{ hue: friend.hue, initials: friend.initials, img: friend.avatar }} size={32} />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13px] font-semibold text-text truncate">{friend.name}</div>
+                          {friend.phone && <div className="text-[11px] text-muted truncate">{friend.phone}</div>}
+                        </div>
+                      </label>
+                    );
+                  })}
+                {friends.length === 0 && (
+                  <div className="p-6 text-center text-[12.5px] italic text-muted">
+                    {vi ? "Chưa có bạn bè nào." : "No friends found."}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2 border-t border-border">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setCreateGroupModal(false);
+                  setNewGroupName("");
+                  setSelectedFriends([]);
+                  setCreateGroupSearch("");
+                  setNewGroupAvatar(null);
+                  setNewGroupAvatarPreview(null);
+                }}
+              >
+                {vi ? "Hủy" : "Cancel"}
+              </Button>
+              <Button
+                onClick={handleCreateGroup}
+                disabled={creatingGroup || !newGroupName.trim() || selectedFriends.length === 0}
+              >
+                {creatingGroup ? (vi ? "Đang tạo…" : "Creating…") : (vi ? "Tạo nhóm" : "Create Group")}
+              </Button>
             </div>
           </div>
         </Modal>
