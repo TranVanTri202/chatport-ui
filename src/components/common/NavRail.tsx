@@ -10,7 +10,7 @@ import { useAppContext } from "@/providers/AppProvider";
 interface NavItem {
   readonly href: string;
   readonly icon: IconName;
-  readonly labelKey: "nav_dashboard" | "nav_chat" | "nav_contacts" | "nav_autoreply" | "nav_accounts" | "nav_settings";
+  readonly labelKey: "nav_dashboard" | "nav_chat" | "nav_contacts" | "nav_autoreply" | "nav_accounts" | "nav_settings" | "nav_reports";
 }
 
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
@@ -19,6 +19,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { href: "/contacts", icon: "addr", labelKey: "nav_contacts" },
   { href: "/auto-reply", icon: "bot", labelKey: "nav_autoreply" },
   { href: "/accounts", icon: "users", labelKey: "nav_accounts" },
+  { href: "/reports", icon: "sheet", labelKey: "nav_reports" },
   { href: "/settings", icon: "settings", labelKey: "nav_settings" },
 ];
 

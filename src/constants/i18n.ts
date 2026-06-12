@@ -29,6 +29,7 @@ const VI: Dict = {
   nav_autoreply: "Auto Reply",
   nav_accounts: "Tài khoản",
   nav_settings: "Cài đặt",
+  nav_reports: "Báo cáo",
   appTag: "Trung tâm điều phối",
   nav_logout: "Đăng xuất",
 };
@@ -59,6 +60,7 @@ const EN: Dict = {
   nav_autoreply: "Auto Reply",
   nav_accounts: "Accounts",
   nav_settings: "Settings",
+  nav_reports: "Reports",
   appTag: "Operations console",
   nav_logout: "Logout",
 };

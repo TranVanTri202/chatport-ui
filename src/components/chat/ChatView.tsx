@@ -647,9 +647,9 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
             setNewGroupAvatar(null);
             setNewGroupAvatarPreview(null);
           }}
-          width={420}
+          width={680}
         >
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 max-h-[78vh] min-h-[500px]">
             <div className="flex items-center gap-4">
               <div className="relative flex-shrink-0">
                 <Avatar
@@ -698,9 +698,9 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5 min-h-0">
+            <div className="flex flex-col gap-1.5 min-h-0 flex-1">
               <label className="text-[12px] font-bold uppercase tracking-wider text-muted">
-                {vi ? "Chọn thành viên" : "Select Members"} ({selectedFriends.length})
+                {vi ? "Chọn thành viên" : "Select Members"}
               </label>
               <SearchBox
                 value={createGroupSearch}
@@ -709,41 +709,91 @@ function ChatWorkspace({ account, accounts, vi, onSwitch, initialConvoId }: { re
                 placeholder={vi ? "Tìm bạn bè…" : "Search friends…"}
                 className="mb-2"
               />
-              <div className="max-h-[200px] overflow-y-auto flex flex-col border border-border rounded-xl divide-y divide-border/30 bg-surface-1">
-                {friends
-                  .filter((f) => !createGroupSearch.trim() || f.name.toLowerCase().includes(createGroupSearch.toLowerCase()))
-                  .map((friend) => {
-                    const isChecked = selectedFriends.includes(friend.id);
-                    return (
-                      <label
-                        key={friend.id}
-                        className="flex items-center gap-3 p-2.5 hover:bg-surface-2 cursor-pointer select-none transition-colors"
+              
+              {/* Split screen content area */}
+              <div className="grid grid-cols-[1fr_240px] border border-border rounded-xl min-h-[300px] max-h-[340px] overflow-hidden bg-surface-1 flex-1">
+                {/* Left Column: All friends selection list */}
+                <div className="overflow-y-auto p-1 divide-y divide-border/20">
+                  {friends
+                    .filter((f) => !createGroupSearch.trim() || f.name.toLowerCase().includes(createGroupSearch.toLowerCase()))
+                    .map((friend) => {
+                      const isChecked = selectedFriends.includes(friend.id);
+                      return (
+                        <label
+                          key={friend.id}
+                          className="flex items-center gap-3 p-2.5 hover:bg-surface-2 cursor-pointer select-none transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              if (isChecked) {
+                                setSelectedFriends((prev) => prev.filter((id) => id !== friend.id));
+                              } else {
+                                setSelectedFriends((prev) => [...prev, friend.id]);
+                              }
+                            }}
+                            className="accent-accent h-4 w-4 rounded border-border"
+                          />
+                          <Avatar spec={{ hue: friend.hue, initials: friend.initials, img: friend.avatar }} size={32} />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[13px] font-semibold text-text truncate">{friend.name}</div>
+                            {friend.phone && <div className="text-[11px] text-muted truncate">{friend.phone}</div>}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  {friends.filter((f) => !createGroupSearch.trim() || f.name.toLowerCase().includes(createGroupSearch.toLowerCase())).length === 0 && (
+                    <div className="p-8 text-center text-xs italic text-muted">
+                      {vi ? "Không tìm thấy kết quả." : "No results found."}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Column: Selected list summary */}
+                <div className="border-l border-border bg-surface-2 flex flex-col min-h-0">
+                  <div className="p-2.5 border-b border-border flex items-center justify-between text-[11.5px] font-semibold text-muted">
+                    <span>
+                      {vi
+                        ? `Đã chọn: ${selectedFriends.length}`
+                        : `Selected: ${selectedFriends.length}`}
+                    </span>
+                    {selectedFriends.length > 0 && (
+                      <button
+                        onClick={() => setSelectedFriends([])}
+                        className="text-accent hover:underline text-[11.5px] font-semibold"
                       >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => {
-                            if (isChecked) {
-                              setSelectedFriends((prev) => prev.filter((id) => id !== friend.id));
-                            } else {
-                              setSelectedFriends((prev) => [...prev, friend.id]);
-                            }
-                          }}
-                          className="accent-accent h-4 w-4 rounded border-border"
-                        />
-                        <Avatar spec={{ hue: friend.hue, initials: friend.initials, img: friend.avatar }} size={32} />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[13px] font-semibold text-text truncate">{friend.name}</div>
-                          {friend.phone && <div className="text-[11px] text-muted truncate">{friend.phone}</div>}
-                        </div>
-                      </label>
-                    );
-                  })}
-                {friends.length === 0 && (
-                  <div className="p-6 text-center text-[12.5px] italic text-muted">
-                    {vi ? "Chưa có bạn bè nào." : "No friends found."}
+                        {vi ? "Xóa hết" : "Clear all"}
+                      </button>
+                    )}
                   </div>
-                )}
+                  <div className="flex-1 overflow-y-auto p-1.5 flex flex-col gap-1.5 min-h-0">
+                    {friends
+                      .filter((f) => selectedFriends.includes(f.id))
+                      .map((friend) => (
+                        <div
+                          key={friend.id}
+                          className="flex items-center justify-between gap-1.5 p-1 rounded-lg hover:bg-surface-3 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Avatar spec={{ hue: friend.hue, initials: friend.initials, img: friend.avatar }} size={24} />
+                            <span className="text-[12px] font-medium text-text truncate max-w-[130px]">{friend.name}</span>
+                          </div>
+                          <button
+                            onClick={() => setSelectedFriends((prev) => prev.filter((id) => id !== friend.id))}
+                            className="text-muted hover:text-text p-0.5 transition-colors"
+                          >
+                            <Icon name="x" size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    {selectedFriends.length === 0 && (
+                      <div className="flex-1 flex items-center justify-center p-4 text-center text-[11.5px] italic text-muted">
+                        {vi ? "Chưa chọn thành viên" : "No members selected"}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1169,43 +1219,24 @@ function ChatThread({ convo, messages, expired, vi, botId, onSendText, onSendIma
     return () => { cancelled = true; clearTimeout(timer); };
   }, [showStickerPicker, stickerQuery, convo, botId]);
 
-  // Emotion keyword → sticker search keyword mapping
-  const EMOTION_KEYWORDS: Record<string, string> = {
-    'haha': 'haha', 'hihi': 'haha', 'hehe': 'haha', 'lol': 'haha', 'lmao': 'haha', 'cười': 'haha',
-    'buồn': 'buồn', 'sad': 'buồn', 'chán': 'buồn', 'khóc': 'khóc', 'cry': 'khóc', 'huhu': 'khóc',
-    'tức': 'tức giận', 'giận': 'tức giận', 'angry': 'tức giận', 'bực': 'tức giận',
-    'vui': 'vui', 'happy': 'vui', 'mừng': 'vui', 'thích': 'vui',
-    'yêu': 'yêu', 'love': 'yêu', 'thương': 'yêu', 'cute': 'cute', 'dễ thương': 'cute',
-    'wow': 'wow', 'ngạc nhiên': 'wow', 'surprised': 'wow',
-    'sợ': 'sợ', 'fear': 'sợ', 'scared': 'sợ',
-    'xin lỗi': 'xin lỗi', 'sorry': 'xin lỗi',
-    'ok': 'ok', 'oke': 'ok', 'okay': 'ok',
-    'ghê': 'tức giận',
-  };
-
-  // Watch draft for emotion keywords in first 2 words
+  // Watch draft to suggest stickers (1 or 2 words)
   useEffect(() => {
     if (!botId || !onSendSticker) return;
-    const words = draft.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const words = draft.trim().split(/\s+/).filter(Boolean);
     if (words.length === 0 || words.length > 2) {
       setSuggestedStickers([]);
       setSuggestionDismissed(false);
       return;
     }
-    const firstTwo = words.slice(0, 2).join(' ');
-    let keyword: string | null = null;
-    for (const [trigger, mapped] of Object.entries(EMOTION_KEYWORDS)) {
-      if (firstTwo.includes(trigger)) { keyword = mapped; break; }
-    }
-    if (!keyword) { setSuggestedStickers([]); return; }
     if (suggestionDismissed) return;
     let cancelled = false;
+    const keyword = words.join(' ');
     const timer = setTimeout(async () => {
       try {
-        const res = await api.get(`/channels/zalo/stickers/${botId}?keyword=${encodeURIComponent(keyword as string)}`) as any;
+        const res = await api.get(`/channels/zalo/stickers/${botId}?keyword=${encodeURIComponent(keyword)}`) as any;
         if (!cancelled) setSuggestedStickers(Array.isArray(res?.data) ? res.data.slice(0, 20) : []);
       } catch { if (!cancelled) setSuggestedStickers([]); }
-    }, 500);
+    }, 300);
     return () => { cancelled = true; clearTimeout(timer); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, botId, suggestionDismissed]);
@@ -1585,32 +1616,156 @@ function ChatThread({ convo, messages, expired, vi, botId, onSendText, onSendIma
             </div>
           )}
 
-          <div className="p-[12px_18px_16px]">
-            {auto ? <div className="mb-2.5 flex items-center gap-2 text-[11.5px] text-accent"><span className="h-1.5 w-1.5 rounded-full bg-accent" /> {vi ? "AI đang tự trả lời · nhập để tiếp quản" : "AI is replying · type to take over"}</div> : null}
-            <div className="relative flex items-center gap-2">
+          <div className="flex flex-col">
+            {/* AI auto reply status banner (above toolbar) */}
+            {auto && (
+              <div className="flex items-center gap-1.5 px-5 py-2 text-[10.5px] font-semibold text-accent bg-accent/5 border-b border-border select-none animate-fade-in">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+                {vi ? "AI đang tự trả lời · nhập để tiếp quản" : "AI is replying · type to take over"}
+              </div>
+            )}
+
+            {/* Toolbar row */}
+            <div className="flex items-center gap-2 px-5 py-2 border-b border-border bg-surface-1/40 select-none">
               <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setSelectedImage(f); setImagePreviewUrl(URL.createObjectURL(f)); } e.target.value = ""; }} />
               <input ref={fileRef} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onSendFile(f); e.target.value = ""; }} />
-              <button onClick={() => imgRef.current?.click()} className="grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border text-muted hover:text-text"><Icon name="image" size={18} /></button>
-              <button onClick={() => fileRef.current?.click()} className="grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border text-muted hover:text-text"><Icon name="paperclip" size={18} /></button>
+              
+              {/* 1. Sticker Picker */}
               {onSendSticker && (
                 <button
                   onClick={() => { setShowStickerPicker(v => !v); setStickerQuery(""); }}
-                  className={`grid h-[34px] w-[34px] place-items-center rounded-[9px] border border-border transition-colors ${showStickerPicker ? 'border-accent text-accent bg-accent/10' : 'text-muted hover:text-text'}`}
+                  className={`p-1.5 rounded-lg transition-colors ${showStickerPicker ? 'bg-accent/15 text-accent' : 'text-muted hover:text-text hover:bg-surface-2'}`}
+                  title={vi ? "Nhãn dán" : "Stickers"}
+                >
+                  <Icon name="smile" size={17} />
+                </button>
+              )}
+
+              {/* 2. Image */}
+              <button
+                onClick={() => imgRef.current?.click()}
+                className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-surface-2 transition-colors"
+                title={vi ? "Hình ảnh" : "Image"}
+              >
+                <Icon name="image" size={17} />
+              </button>
+
+              {/* 3. Paperclip */}
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-surface-2 transition-colors"
+                title={vi ? "Đính kèm file" : "Attach file"}
+              >
+                <Icon name="paperclip" size={17} />
+              </button>
+
+              {/* 4. Contact Card */}
+              <button
+                className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-surface-2 transition-colors"
+                title={vi ? "Danh thiếp" : "Contact Card"}
+              >
+                <svg className="w-[17px] h-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <circle cx="9" cy="10" r="2.5" />
+                  <path d="M5 17c0-1.5 2.5-2.5 4-2.5s4 1 4 2.5" />
+                  <line x1="16" y1="9" x2="19" y2="9" />
+                  <line x1="16" y1="13" x2="19" y2="13" />
+                </svg>
+              </button>
+
+              {/* 5. Zalo dotted rectangle */}
+              <button
+                className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-surface-2 transition-colors"
+                title="Zalo Templates"
+              >
+                <svg className="w-[17px] h-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="4" strokeDasharray="3 3" />
+                  <path d="M8 8h8l-8 8h8" strokeWidth={2} />
+                </svg>
+              </button>
+
+              {/* 6. Text formatting */}
+              <button
+                className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-surface-2 transition-colors"
+                title={vi ? "Định dạng tin nhắn" : "Text formatting"}
+              >
+                <svg className="w-[17px] h-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 20h4l1.5-4h5l1.5 4h4" />
+                  <path d="M12 4v12" />
+                  <path d="M18.42 5.58a1.5 1.5 0 0 1 2.12 2.12L10.75 17.5H8.62v-2.12L18.42 5.58Z" fill="currentColor" fillOpacity={0.15} />
+                </svg>
+              </button>
+
+              {/* 7. Quick Response */}
+              <button
+                className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-surface-2 transition-colors"
+                title={vi ? "Tin nhắn mẫu" : "Quick replies"}
+              >
+                <svg className="w-[17px] h-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z" />
+                  <path d="m13 8-3 3.5h3l-1 3.5 3-3.5h-3l1-3.5Z" fill="currentColor" />
+                </svg>
+              </button>
+
+              {/* 8. Billing card */}
+              <button
+                className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-surface-2 transition-colors"
+                title={vi ? "Gửi yêu cầu thanh toán" : "Request payment"}
+              >
+                <svg className="w-[17px] h-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="5" width="20" height="14" rx="2" />
+                  <line x1="2" y1="10" x2="22" y2="10" />
+                  <rect x="16" y="13" width="3" height="2" rx="0.5" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Input row */}
+            <div className="relative flex items-center px-5 py-3 bg-surface-0 gap-3">
+              <div className="flex-1 flex items-center bg-transparent py-1">
+                <input
+                  value={draft}
+                  onChange={(e) => handleInputChange(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && send()}
+                  onPaste={(e) => {
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+                    for (let i = 0; i < items.length; i++) {
+                      const item = items[i];
+                      if (!item) continue;
+                      if (item.type.includes("image")) {
+                        const file = item.getAsFile();
+                        if (file) {
+                          setSelectedImage(file);
+                          setImagePreviewUrl(URL.createObjectURL(file));
+                          e.preventDefault();
+                          break;
+                        }
+                      }
+                    }
+                  }}
+                  placeholder={vi ? `Nhập @, tin nhắn tới ${convo?.name ?? ""}` : `Type @, message to ${convo?.name ?? ""}`}
+                  className="flex-1 bg-transparent text-sm text-text outline-none placeholder:text-muted/65"
+                />
+              </div>
+
+              {/* Action buttons on the right side of the input row */}
+              <div className="flex items-center gap-2.5 shrink-0">
+                <button
+                  onClick={() => { setShowStickerPicker(v => !v); setStickerQuery(""); }}
+                  className="p-1.5 rounded-lg text-muted hover:text-text hover:bg-surface-2 transition-colors"
                   title={vi ? "Nhãn dán" : "Stickers"}
                 >
                   <Icon name="smile" size={18} />
                 </button>
-              )}
-              <div className="flex flex-1 items-center rounded-xl border border-border bg-surface-2 p-[4px_6px_4px_14px]">
-                <input value={draft} onChange={(e) => handleInputChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={vi ? "Nhập tin nhắn…" : "Type a message…"} className="flex-1 bg-transparent py-2 text-sm text-text outline-none" />
+                <Button icon="send" onClick={send} className="rounded-xl px-4 py-2">{vi ? "Gửi" : "Send"}</Button>
               </div>
-              <Button icon="send" onClick={send} className="rounded-xl px-4 py-2.5">{vi ? "Gửi" : "Send"}</Button>
 
               {/* Sticker Picker Overlay */}
               {showStickerPicker && onSendSticker && (
                 <div
                   ref={stickerPickerRef}
-                  className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[340px] rounded-2xl border border-border bg-surface-0/95 shadow-2xl backdrop-blur-xl overflow-hidden"
+                  className="absolute bottom-[calc(100%+12px)] left-5 z-50 w-[340px] rounded-2xl border border-border bg-surface-0/95 shadow-2xl backdrop-blur-xl overflow-hidden"
                   style={{ boxShadow: '0 -4px 40px rgba(0,0,0,0.35)' }}
                 >
                   {/* Header */}
